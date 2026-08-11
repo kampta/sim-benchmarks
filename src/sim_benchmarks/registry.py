@@ -1,4 +1,4 @@
-"""Load pinned benchmark, dataset, and reproduction manifests."""
+"""Load pinned benchmark, model, dataset, and reproduction manifests."""
 
 from __future__ import annotations
 
@@ -20,6 +20,11 @@ def load_json(relative_path: str) -> dict[str, Any]:
 
 def benchmark_manifests() -> list[dict[str, Any]]:
     root = _manifest_root() / "benchmarks"
+    return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(root.glob("*.json"))]
+
+
+def model_manifests() -> list[dict[str, Any]]:
+    root = _manifest_root() / "models"
     return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(root.glob("*.json"))]
 
 

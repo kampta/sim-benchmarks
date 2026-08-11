@@ -21,6 +21,7 @@
     {"id": "t_rex", "url": "https://tactile-reactive-dexterous.github.io/", "scale": "about 100 hours", "use": "visual-tactile dexterous manipulation"}
   ],
   "external_pretraining": [
+    {"id": "xr1_post_train_demo", "url": "https://huggingface.co/datasets/XiaomiRobotics/xr1_post_train_demo", "revision": "e47cda40a259eb5b2cff49b0e8d398b9f80848ee", "scale": "small post-training demonstration release", "license_note": "Apache-2.0 in the dataset card at snapshot time; verify before use", "use": "XR-1 data-format and post-training pipeline validation; not a substitute for the unreleased full mixture"},
     {"id": "open_x_embodiment", "url": "https://robotics-transformer-x.github.io/", "scale": "over 1 million episodes across 22 embodiments", "license_note": "verify each constituent dataset", "use": "general cross-embodiment pretraining"},
     {"id": "agibot_world", "url": "https://github.com/OpenDriveLab/AgiBot-World", "scale": "1003672 trajectories", "license_note": "CC BY-NC-SA 4.0", "use": "large-scale mobile bimanual pretraining"},
     {"id": "robomind", "url": "https://x-humanoid-robomind.github.io/", "scale": "107000 trajectories, 479 tasks, four embodiments", "use": "multi-embodiment real manipulation and failure learning"},
@@ -31,4 +32,3 @@
     {"id": "molmoact", "url": "https://github.com/allenai/molmoact", "scale": "released action-reasoning mixture", "use": "VLA action-reasoning midtraining"}
   ]
 }
-

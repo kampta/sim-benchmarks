@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "xiaomi_robotics_1",
+  "name": "Xiaomi-Robotics-1",
+  "kind": "model_baseline",
+  "source": "https://github.com/XiaomiRobotics/Xiaomi-Robotics-1.git",
+  "revision": "6bc75afb791a1938750fe5fc0aee2b0f28cf87e2",
+  "revision_date": "2026-08-11",
+  "source_license": "Apache-2.0",
+  "status": "source_pinned",
+  "runtime": {
+    "python": "3.12",
+    "torch": "2.8.0",
+    "torchvision": "0.23.0",
+    "transformers": "4.57.1",
+    "flash_attn": "2.8.3"
+  },
+  "checkpoints": [
+    {
+      "benchmark": "vlabench",
+      "id": "XiaomiRobotics/Xiaomi-Robotics-1-VLABench",
+      "revision": "2dfc33b390478f71737eacb4748333e6d8638a06",
+      "license": "apache-2.0",
+      "digest": null
+    },
+    {
+      "benchmark": "robocasa",
+      "id": "XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa",
+      "revision": "8550c4915b83bd10ec838214dcfc2d9dc0e3e7ff",
+      "license": "apache-2.0",
+      "digest": null
+    },
+    {
+      "benchmark": "robocasa365",
+      "id": "XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa365",
+      "revision": "0d1aa76d0d82debc9b611e4d1e231096434d5be4",
+      "license": "apache-2.0",
+      "digest": null
+    }
+  ],
+  "transport": {
+    "upstream_example": "length_prefixed_tcp_pickle",
+    "integration": "vla_eval_websocket_msgpack",
+    "reuse_upstream_transport": false
+  },
+  "integration_order": ["vlabench", "robocasa", "robocasa365"],
+  "notes": "Checkpoint repository revisions are pinned; downloaded artifact digests remain mandatory before a reproduction run. License fields reflect the model cards at snapshot time and must be rechecked for use."
+}
