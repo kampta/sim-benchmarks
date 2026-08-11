@@ -1,0 +1,11 @@
+{
+  "id": "colosseum_v2",
+  "name": "Colosseum V2",
+  "source": "https://github.com/jstmn/ColosseumV2.git",
+  "revision": "d9cbaae1699e6ed7482777e2b7dd319300ecd4e6",
+  "revision_date": "2026-08-11",
+  "status": "planned",
+  "capabilities": ["controlled_ood", "visual_robustness", "language_robustness", "action_robustness", "bimanual"],
+  "integration_notes": "Implement as an isolated simulator worker and preserve the upstream perturbation and episode manifests exactly."
+}
+

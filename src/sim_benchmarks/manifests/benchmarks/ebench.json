@@ -1,0 +1,12 @@
+{
+  "id": "ebench",
+  "name": "EBench",
+  "source": "https://github.com/InternRobotics/EBench.git",
+  "revision": "b7b470f4ac0c0e0f01db04731ea082c7fb7d7651",
+  "revision_date": "2026-08-11",
+  "status": "planned",
+  "capabilities": ["mobile_manipulation", "long_horizon", "dexterity", "precision", "generalization"],
+  "dataset": "https://huggingface.co/datasets/InternRobotics/EBench-Dataset",
+  "integration_notes": "Bridge the GenManip evaluation service without weakening its held-out split or five-axis/four-axis diagnostics."
+}
+

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sim-benchmarks"
+version = "0.1.0"
+description = "Strict, reproducible extensions for the AllenAI VLA evaluation harness"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "vla-eval",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+]
+
+[tool.uv]
+exclude-newer = "2026-08-11"
+
+[tool.uv.sources]
+vla-eval = { git = "https://github.com/allenai/vla-evaluation-harness.git", rev = "2680ab2fafe981c2dba63c6c1a4e7bb4415dbb56" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sim_benchmarks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 119
+

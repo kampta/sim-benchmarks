@@ -1,0 +1,11 @@
+{
+  "id": "domino",
+  "name": "DOMINO",
+  "source": "https://github.com/H-EmbodVis/DOMINO.git",
+  "revision": "22cd288865827cb932003c877cf2870fe5ca22e6",
+  "revision_date": "2026-08-11",
+  "status": "planned",
+  "capabilities": ["dynamic_manipulation", "temporal_reasoning", "collision_avoidance", "real_time"],
+  "dataset": "https://huggingface.co/datasets/h-embodvis/DOMINO",
+  "integration_notes": "Support both synchronous reproduction and live execution; preserve upstream Success Rate and Manipulation Score."
+}

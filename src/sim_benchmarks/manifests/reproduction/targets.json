@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "harness_revision": "2680ab2fafe981c2dba63c6c1a4e7bb4415dbb56",
+  "policy": "Local support requires an episode-level reproduction against an upstream reference; a smoke test is insufficient.",
+  "targets": [
+    {
+      "benchmark": "robomme",
+      "upstream_status": "reproduced",
+      "local_status": "pending",
+      "benchmark_config": "configs/benchmarks/robomme/reference.yaml",
+      "model_config": "configs/model_servers/mme_vla/pi05_baseline.yaml"
+    },
+    {
+      "benchmark": "molmospaces",
+      "upstream_status": "reproduced",
+      "local_status": "pending",
+      "benchmark_config": "configs/benchmarks/molmospaces/pick_and_place.yaml",
+      "model_config": "configs/model_servers/molmobot/droid.yaml"
+    },
+    {
+      "benchmark": "robocasa365",
+      "upstream_status": "integrated",
+      "local_status": "pending",
+      "benchmark_config": "configs/benchmarks/robocasa365/eval.yaml",
+      "model_config": "configs/model_servers/groot/robocasa365.yaml"
+    },
+    {
+      "benchmark": "robotwin",
+      "upstream_status": "integrated",
+      "local_status": "pending",
+      "benchmark_config": "configs/benchmarks/robotwin/eval.yaml",
+      "model_config": "configs/model_servers/db_cogact/robotwin2.yaml"
+    },
+    {
+      "benchmark": "robodojo",
+      "upstream_status": "integrated",
+      "local_status": "pending",
+      "benchmark_config": "configs/benchmarks/robodojo/eval.yaml",
+      "model_config": "configs/model_servers/robodojo_pi05/pi05.yaml"
+    },
+    {
+      "benchmark": "behavior1k",
+      "upstream_status": "integrated_2025_protocol",
+      "local_status": "pending_upgrade_2026",
+      "benchmark_config": "configs/benchmarks/behavior1k/eval.yaml",
+      "model_config": "configs/model_servers/behavior1k/demo_replay.yaml"
+    },
+    {
+      "benchmark": "duobench",
+      "upstream_status": "integrated",
+      "local_status": "blocked_on_reference_checkpoint",
+      "benchmark_config": "configs/benchmarks/duobench/eval.yaml",
+      "model_config": null
+    },
+    {
+      "benchmark": "vlabench",
+      "upstream_status": "integrated",
+      "local_status": "blocked_on_reference_checkpoint",
+      "benchmark_config": "configs/benchmarks/vlabench/eval.yaml",
+      "model_config": null
+    },
+    {
+      "benchmark": "mikasa",
+      "upstream_status": "integrated",
+      "local_status": "blocked_on_reference_checkpoint",
+      "benchmark_config": "configs/benchmarks/mikasa/eval.yaml",
+      "model_config": null
+    }
+  ]
+}
+

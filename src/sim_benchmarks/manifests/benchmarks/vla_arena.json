@@ -1,0 +1,11 @@
+{
+  "id": "vla_arena",
+  "name": "VLA-Arena",
+  "source": "https://github.com/PKU-Alignment/VLA-Arena.git",
+  "revision": "babe582ebffc82b979b77964a7e56417d02f63a4",
+  "revision_date": "2026-08-11",
+  "status": "planned",
+  "capabilities": ["safety", "distractors", "extrapolation", "long_horizon", "unseen_objects"],
+  "integration_notes": "Expose safety and state-preservation metrics as first-class episode fields rather than reducing them to success."
+}
+
