@@ -10,7 +10,7 @@ creation alone does not advance it to reproduced.
 - [x] Add strict interface contracts and an embodiment-adapter boundary.
 - [x] Add first-wave benchmark, dataset, and reproduction manifests.
 - [x] Document architecture, support policy, and the initial baseline.
-- [ ] Create an authenticated writable GitHub fork/remote and push this branch.
+- [x] Create an authenticated writable GitHub repository/remote and push this branch.
 - [ ] Add CI for unit tests, Ruff, manifest validation, and pin-drift detection.
 
 ## XR-1 milestone 1: VLABench
