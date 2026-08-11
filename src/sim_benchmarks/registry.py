@@ -1,4 +1,4 @@
-"""Load pinned benchmark, model, dataset, and reproduction manifests."""
+"""Load pinned policy-evaluation and benchmark-provenance manifests."""
 
 from __future__ import annotations
 

@@ -45,4 +45,5 @@ Use the three-way policy in the dataset catalog:
 An episode identifier, initial-state seed, scene, object instance, or generated
 variation in an evaluation manifest must not appear in training. Dataset and
 evaluation manifests are compared by content hash before a run is accepted.
-
+Training data is recorded only as policy provenance for this check; policy
+training and general-purpose dataset tooling are outside this repository.

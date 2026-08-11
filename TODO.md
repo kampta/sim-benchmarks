@@ -10,6 +10,8 @@ creation alone does not advance it to reproduced.
 - [x] Add strict interface contracts and an embodiment-adapter boundary.
 - [x] Add first-wave benchmark, dataset, and reproduction manifests.
 - [x] Document architecture, support policy, and the initial baseline.
+- [x] Constrain the repository to simulation policy evaluation; keep training,
+  tokenizer/generative-model, world-model, and physical-robot work elsewhere.
 - [x] Create an authenticated writable GitHub repository/remote and push this branch.
 - [ ] Add CI for unit tests, Ruff, manifest validation, and pin-drift detection.
 
@@ -90,5 +92,5 @@ See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for per-benchmark exit criteria
   checks.
 - [ ] Add container and asset digest capture plus paired statistical reports.
 - [ ] Add REST/MCP orchestration only after simulation rollout semantics stabilize.
-- [ ] Add physical-robot and world-model runners as separate safety/protocol
-  domains after the simulation runner is reproduced.
+- [ ] Add versioned cross-benchmark suites and paired statistical reports after
+  their constituent adapters are reproduced.

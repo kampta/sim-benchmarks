@@ -1,34 +1,60 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "snapshot_date": "2026-08-11",
+  "purpose": "Benchmark-native data provenance for policy evaluation, reference reproduction, split validation, and train/evaluation leakage checks. This is not a general training-data catalog.",
   "split_policy": {
-    "train_id": "Official demonstrations and generated data explicitly allowed for training.",
+    "train_id": "Benchmark-released demonstrations permitted for training a reference policy; recorded only as policy provenance.",
     "eval_id": "Unseen seeds or episodes from the same task distribution.",
     "eval_ood": "Held-out objects, layouts, scenes, language, dynamics, or task compositions."
   },
   "benchmark_native": [
-    {"id": "robocasa365", "url": "https://robocasa.ai/docs/build/html/datasets/datasets_overview.html", "scale": "over 2200 hours", "use": "household, compositional, mobile-manipulation training"},
-    {"id": "robotwin2", "url": "https://github.com/RoboTwin-Platform/RoboTwin", "scale": "over 100000 trajectories", "use": "bimanual multi-task training"},
-    {"id": "domino", "url": "https://github.com/H-EmbodVis/DOMINO", "scale": "over 110000 expert trajectories", "use": "dynamic and temporal manipulation"},
-    {"id": "mikasa_robo", "url": "https://github.com/CognitiveAISystems/MIKASA-Robo", "scale": "32 core datasets of 1000 episodes; 90-task VLA extension", "use": "memory-intensive manipulation"},
-    {"id": "robomme", "url": "https://github.com/RoboMME/robomme_benchmark", "scale": "1600 demonstrations", "use": "memory evaluation and specialist fine-tuning"},
-    {"id": "molmobot_data", "url": "https://github.com/allenai/MolmoBot", "scale": "large synthetic corpus with open generator", "use": "open-world manipulation and sim-to-real pretraining"},
-    {"id": "ebench", "url": "https://huggingface.co/datasets/InternRobotics/EBench-Dataset", "scale": "released in LeRobot format", "use": "mobile, dexterous, and long-horizon EBench training"},
-    {"id": "robocerebra", "url": "https://robocerebra.github.io/", "scale": "approximately 6660 episodes", "use": "long-horizon planning and memory"},
-    {"id": "busybox", "url": "https://microsoft.github.io/BusyBox/", "scale": "over 1000 demonstrations", "use": "real bimanual affordance manipulation"},
-    {"id": "vla_replica", "url": "https://irvlutd.github.io/VLAReplica/", "scale": "500 demonstrations", "use": "low-cost reproducible physical evaluation"},
-    {"id": "dexora", "url": "https://github.com/ZZongzheng0918/Dexora", "scale": "100000 simulated plus 12200 real trajectories", "use": "high-DoF bimanual dexterity"},
-    {"id": "t_rex", "url": "https://tactile-reactive-dexterous.github.io/", "scale": "about 100 hours", "use": "visual-tactile dexterous manipulation"}
-  ],
-  "external_pretraining": [
-    {"id": "xr1_post_train_demo", "url": "https://huggingface.co/datasets/XiaomiRobotics/xr1_post_train_demo", "revision": "e47cda40a259eb5b2cff49b0e8d398b9f80848ee", "scale": "small post-training demonstration release", "license_note": "Apache-2.0 in the dataset card at snapshot time; verify before use", "use": "XR-1 data-format and post-training pipeline validation; not a substitute for the unreleased full mixture"},
-    {"id": "open_x_embodiment", "url": "https://robotics-transformer-x.github.io/", "scale": "over 1 million episodes across 22 embodiments", "license_note": "verify each constituent dataset", "use": "general cross-embodiment pretraining"},
-    {"id": "agibot_world", "url": "https://github.com/OpenDriveLab/AgiBot-World", "scale": "1003672 trajectories", "license_note": "CC BY-NC-SA 4.0", "use": "large-scale mobile bimanual pretraining"},
-    {"id": "robomind", "url": "https://x-humanoid-robomind.github.io/", "scale": "107000 trajectories, 479 tasks, four embodiments", "use": "multi-embodiment real manipulation and failure learning"},
-    {"id": "droid", "url": "https://droid-dataset.github.io/", "scale": "76000 trajectories / 350 hours", "use": "in-the-wild scene and task diversity"},
-    {"id": "rh20t", "url": "https://rh20t.github.io/", "scale": "over 110000 contact-rich sequences", "use": "RGB-D, force, audio, and tactile pretraining"},
-    {"id": "bridge_v2", "url": "https://rail-berkeley.github.io/bridgedata/", "scale": "60096 trajectories", "use": "accessible WidowX manipulation"},
-    {"id": "robonet", "url": "https://www.robonet.wiki/", "scale": "about 162000 trajectories / 15 million frames", "use": "multi-robot visual and world-model pretraining"},
-    {"id": "molmoact", "url": "https://github.com/allenai/molmoact", "scale": "released action-reasoning mixture", "use": "VLA action-reasoning midtraining"}
+    {
+      "id": "robocasa365",
+      "url": "https://robocasa.ai/docs/build/html/datasets/datasets_overview.html",
+      "scale": "over 2200 hours",
+      "evaluation_role": "Validate RoboCasa365 split membership, reproduce released policies, and detect episode leakage."
+    },
+    {
+      "id": "robotwin2",
+      "url": "https://github.com/RoboTwin-Platform/RoboTwin",
+      "scale": "over 100000 trajectories",
+      "evaluation_role": "Reproduce RoboTwin policies and freeze canonical task and episode manifests."
+    },
+    {
+      "id": "domino",
+      "url": "https://github.com/H-EmbodVis/DOMINO",
+      "scale": "over 110000 expert trajectories",
+      "evaluation_role": "Reproduce the DOMINO reference policy and validate dynamic-manipulation splits."
+    },
+    {
+      "id": "mikasa_robo",
+      "url": "https://github.com/CognitiveAISystems/MIKASA-Robo",
+      "scale": "32 core datasets of 1000 episodes; 90-task VLA extension",
+      "evaluation_role": "Validate memory-intensive task splits and reproduce a released benchmark baseline."
+    },
+    {
+      "id": "robomme",
+      "url": "https://github.com/RoboMME/robomme_benchmark",
+      "scale": "1600 demonstrations",
+      "evaluation_role": "Preserve the benchmark memory protocol and reproduce its specialist reference."
+    },
+    {
+      "id": "molmobot_data",
+      "url": "https://github.com/allenai/MolmoBot",
+      "scale": "benchmark-released synthetic corpus and generator",
+      "evaluation_role": "Record MolmoBot policy provenance and reproduce MolmoSpaces results without split collisions."
+    },
+    {
+      "id": "ebench",
+      "url": "https://huggingface.co/datasets/InternRobotics/EBench-Dataset",
+      "scale": "released in LeRobot format",
+      "evaluation_role": "Validate EBench train, validation, and held-out evaluation boundaries."
+    },
+    {
+      "id": "robocerebra",
+      "url": "https://robocerebra.github.io/",
+      "scale": "approximately 6660 episodes",
+      "evaluation_role": "Support reproducible long-horizon policy evaluation if the benchmark is integrated."
+    }
   ]
 }

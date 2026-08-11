@@ -1,4 +1,4 @@
-"""Strict extensions for vla-eval."""
+"""Strict simulation-benchmark evaluation for robot policies."""
 
 from sim_benchmarks.protocol.negotiation import (
     InterfaceNegotiationError,

@@ -16,11 +16,13 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual(len(item["revision"]), 40)
             self.assertEqual(item["status"], "planned")
 
-    def test_dataset_catalog_has_train_and_evaluation_split_policy(self) -> None:
+    def test_dataset_catalog_is_limited_to_benchmark_evaluation_data(self) -> None:
         catalog = dataset_catalog()
         self.assertEqual({"train_id", "eval_id", "eval_ood"}, set(catalog["split_policy"]))
         self.assertTrue(catalog["benchmark_native"])
-        self.assertTrue(catalog["external_pretraining"])
+        self.assertNotIn("external_pretraining", catalog)
+        self.assertTrue(all("evaluation_role" in item for item in catalog["benchmark_native"]))
+        self.assertTrue(all("use" not in item for item in catalog["benchmark_native"]))
 
     def test_xiaomi_robotics_1_model_source_is_pinned(self) -> None:
         manifests = model_manifests()

@@ -6,6 +6,18 @@ built as a thin extension of
 The goal is a useful, non-saturated benchmark portfolio—not a larger list of
 adapters with unknown correctness.
 
+## Scope
+
+This repository has one job: run robot policies against simulation benchmarks
+and produce comparable, reproducible evaluation results. In scope are benchmark
+adapters, policy inference adapters, embodiment mappings, evaluation suites,
+metrics, rollout transport, provenance, and reporting.
+
+It is not a policy-training repository, a dataset survey, a video-tokenizer or
+generative-model testbed, a world-model benchmark, or a physical-robot runtime.
+Training datasets and normalization statistics may be referenced only to record
+policy provenance and prevent evaluation leakage. See [the scope contract](docs/SCOPE.md).
+
 ## Status
 
 This repository is at the foundation stage. It contains:
@@ -14,7 +26,7 @@ This repository is at the foundation stage. It contains:
 - strict, fail-closed observation/action interface negotiation;
 - an explicit embodiment-adapter API;
 - pinned source manifests for the first new benchmarks;
-- a dataset catalog and reference-result reproduction plan.
+- benchmark-data provenance and a reference-result reproduction plan.
 
 No benchmark is called supported until a released policy reproduces a published
 reference result under the same task, seed, horizon, camera, and metric
@@ -92,12 +104,12 @@ We will not reuse XR-1's example pickle-over-TCP transport. Exact source,
 checkpoint, dependency, and protocol details are recorded in
 [the XR-1 integration note](docs/models/XIAOMI_ROBOTICS_1.md).
 
-## Training data
+## Evaluation data integrity
 
 The machine-readable catalog at
 [`src/sim_benchmarks/manifests/datasets/catalog.json`](src/sim_benchmarks/manifests/datasets/catalog.json)
-tracks benchmark-native demonstrations and external pretraining corpora. It
-uses three explicit data boundaries:
+tracks only data released with benchmarks in this evaluation portfolio. It uses
+three explicit data boundaries:
 
 - `train_id`: official demonstrations or generated data allowed for training;
 - `eval_id`: unseen episodes from the same task distribution;
@@ -105,7 +117,9 @@ uses three explicit data boundaries:
   compositions.
 
 Evaluation episode manifests must be excluded from training by identity and
-content hash even when training is intentionally kept in distribution.
+content hash even when a policy was intentionally trained in distribution.
+This repository records that provenance; it does not download broad pretraining
+corpora or implement policy training.
 
 ## Development
 
