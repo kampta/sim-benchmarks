@@ -40,6 +40,38 @@ The server must declare and validate:
 Any benchmark-specific conversion belongs in an embodiment profile/adapter,
 not in an implicit camera-name or array-slice convention inside the server.
 
+## Implemented scaffold
+
+The initial VLABench slice now includes:
+
+- `XiaomiRobotics1VLABenchServer`, with the checkpoint and remote-code revision
+  pinned, optional heavy dependencies isolated in PEP 723 metadata, and direct
+  WebSocket/MessagePack serving through `PredictModelServer`;
+- `XR1VLABenchBenchmark`, which selects and names `front`, `base`, and
+  `left_wrist` from the four raw cameras and converts end-effector state to the
+  checkpoint's robot-relative position/Euler/gripper representation;
+- strict validation of images, state, decoded batch/horizon/action dimensions,
+  finite values, and gripper semantics;
+- accumulation of decoded deltas into the same fixed five-step absolute-pose
+  plan as Xiaomi's evaluator, avoiding drift from recomputing against measured
+  IK state between planned actions;
+- model-server and one-episode benchmark smoke configurations;
+- no-checkpoint tests for the full preprocessing and action-decoding path.
+
+Start the two processes from the repository root:
+
+```bash
+# GPU process; the first run creates the isolated XR-1 environment and downloads weights.
+uv run --script src/sim_benchmarks/model_servers/xiaomi_robotics_1.py \
+  --config configs/model_servers/xiaomi_robotics_1/vlabench.yaml
+
+# VLABench environment process. This remains a contract smoke test, not a score.
+vla-eval run --config configs/benchmarks/vlabench/xr1_smoke.yaml --no-docker
+```
+
+The environment command requires VLABench and its assets. A pinned container is
+still needed before the smoke test is portable.
+
 ## Compatibility and order
 
 | Evaluation | In pinned harness v0.4.0 | Released XR-1 checkpoint | Work required |
@@ -55,15 +87,17 @@ released checkpoint. RoboCasa365 is the first XR-1-related *benchmark addition*.
 ## VLABench protocol gap
 
 The v0.4.0 harness adapter currently sends one `primary` camera, language, and a
-7D action, and records success only. Xiaomi's released evaluation path consumes
-four camera views plus end-effector state, predicts a 10-step action chunk from
-a 60-dimensional raw action representation, executes the first seven action
-dimensions, and replans after five actions. Its reports include success,
-intention, and progress metrics across official tracks.
+7D action, and records success only. Xiaomi's released evaluation path requires
+four raw camera images, selects three of them for its prompt, adds end-effector
+state, predicts a 10-step action chunk from a 60-dimensional raw action
+representation, executes the first seven action dimensions, and replans after
+five actions. Its reports include success, intention, and progress metrics
+across official tracks.
 
-Consequently, connecting the checkpoint to the current adapter would be a smoke
-test, not a reproduction. The benchmark observation/metric upgrade and model
-server must land together behind explicit versioned profiles.
+The new XR-1 observation profile closes the model input and action-contract gap.
+The smoke configuration is still not a reproduction because the official track
+enumeration, deterministic episode manifests, intention/progress metrics, and a
+pinned VLABench runtime remain outstanding.
 
 ## RoboCasa365 reproduction target
 

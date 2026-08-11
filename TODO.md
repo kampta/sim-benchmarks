@@ -17,23 +17,23 @@ creation alone does not advance it to reproduced.
 
 - [x] Pin Xiaomi-Robotics-1 source revision, license, released checkpoints, and
   official evaluation dependencies in a model manifest.
-- [ ] Add an XR-1 `PredictModelServer` that loads the Hugging Face
+- [x] Add an XR-1 `PredictModelServer` that loads the Hugging Face
   `AutoModel`/`AutoProcessor` with `trust_remote_code=True` and declares its
   complete observation/action interface.
-- [ ] Add a minimal no-checkpoint unit test for input validation, image ordering,
+- [x] Add a minimal no-checkpoint unit test for input validation, image ordering,
   state padding, action decoding, and fail-closed shape handling.
-- [ ] Package XR-1 runtime dependencies separately: Python 3.12, PyTorch 2.8.0,
+- [x] Package XR-1 runtime dependencies separately: Python 3.12, PyTorch 2.8.0,
   torchvision 0.23, Transformers 4.57.1, and flash-attn 2.8.3.
-- [ ] Never expose the upstream example pickle-over-TCP server; serve inference
+- [x] Never expose the upstream example pickle-over-TCP server; serve inference
   through the harness WebSocket/MessagePack protocol.
-- [ ] Extend VLABench observations from one camera to the four-camera XR-1 view
-  set, with explicit names and deterministic ordering.
-- [ ] Expose the end-effector/robot state required by the XR-1 processor and
+- [x] Extend VLABench observations from one camera to the three named XR-1 views
+  selected from its four raw cameras, with deterministic ordering.
+- [x] Expose the end-effector/robot state required by the XR-1 processor and
   verify its padding and normalization semantics.
 - [ ] Add the official VLABench tracks and deterministic episode manifests.
 - [ ] Preserve success rate, intention score, and progress score instead of
   reporting success alone.
-- [ ] Match the released policy's 10-action prediction / 5-action execution
+- [x] Match the released policy's 10-action prediction / 5-action execution
   behavior through explicit action-chunk configuration.
 - [ ] Smoke-test reset, observation serialization, one inference, action decode,
   stepping, termination, and recording.

@@ -74,7 +74,8 @@ released checkpoints cover VLABench, RoboCasa, and RoboCasa365.
 The first end-to-end target is the released XR-1 VLABench checkpoint because
 VLABench already exists in the pinned harness. This is not merely a model-server
 addition: the v0.4.0 VLABench adapter exposes only one camera and success, while
-XR-1's published protocol uses four cameras, robot state, official tracks, and
+XR-1's published protocol selects three named views from the four-camera raw
+observation, uses robot state and official tracks, and reports
 intention/progress metrics. We will fix and validate that benchmark adapter
 before claiming reproduction.
 

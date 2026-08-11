@@ -1,0 +1,15 @@
+# Contract smoke test only; this is not the official VLABench reproduction suite.
+server:
+  url: "ws://localhost:8000"
+
+output_dir: "./results/vlabench/xr1_smoke"
+
+benchmarks:
+  - benchmark: "sim_benchmarks.benchmarks.vlabench_xr1:XR1VLABenchBenchmark"
+    episodes_per_task: 1
+    params:
+      tasks:
+        - "select_fruit"
+      robot: "franka"
+      max_steps: 200
+      position_offset: [0.0, -0.4, 0.78]

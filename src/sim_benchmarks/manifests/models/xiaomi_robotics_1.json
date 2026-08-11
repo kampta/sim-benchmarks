@@ -7,7 +7,7 @@
   "revision": "6bc75afb791a1938750fe5fc0aee2b0f28cf87e2",
   "revision_date": "2026-08-11",
   "source_license": "Apache-2.0",
-  "status": "source_pinned",
+  "status": "scaffolded",
   "runtime": {
     "python": "3.12",
     "torch": "2.8.0",
@@ -44,5 +44,12 @@
     "reuse_upstream_transport": false
   },
   "integration_order": ["vlabench", "robocasa", "robocasa365"],
+  "artifacts": {
+    "model_server": "src/sim_benchmarks/model_servers/xiaomi_robotics_1.py",
+    "runtime_lock": "src/sim_benchmarks/model_servers/xiaomi_robotics_1.py.lock",
+    "vlabench_profile": "src/sim_benchmarks/benchmarks/vlabench_xr1.py",
+    "model_config": "configs/model_servers/xiaomi_robotics_1/vlabench.yaml",
+    "smoke_config": "configs/benchmarks/vlabench/xr1_smoke.yaml"
+  },
   "notes": "Checkpoint repository revisions are pinned; downloaded artifact digests remain mandatory before a reproduction run. License fields reflect the model cards at snapshot time and must be rechecked for use."
 }
