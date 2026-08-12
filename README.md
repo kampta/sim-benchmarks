@@ -81,7 +81,31 @@ and the longer sequence is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 [Xiaomi-Robotics-1](https://github.com/XiaomiRobotics/Xiaomi-Robotics-1) (XR-1)
 is a policy family, not a benchmark. It is a useful first baseline because its
-released checkpoints cover VLABench, RoboCasa, and RoboCasa365.
+released checkpoints cover VLABench, RoboCasa, and RoboCasa365. Xiaomi also
+publishes a RoboDojo headline result, but does not list a corresponding public
+checkpoint.
+
+No XR-1 benchmark score has been reproduced by this repository yet. The values
+below are upstream reference targets, not our measurements:
+
+| Benchmark | Xiaomi-published reference | Reproduced here | Current state |
+|---|---:|---:|---|
+| VLABench | 59.1% headline SR | — | Adapter scaffolded; runtime smoke test and official metrics remain. |
+| RoboCasa | 74.5% headline; detailed evaluation guide reports 74.2% over 24 × 100 episodes | — | Pinned harness adapter must be audited against RoboCasa v0.2. |
+| RoboCasa365 | 57.4% headline; detailed guide reports 1,432/2,500 = 57.28% | — | Adapter must be reviewed/backported and the `target50` protocol frozen. |
+| RoboDojo | 13.93% headline | — | No XR-1 checkpoint is published; no adapter is present in pinned v0.4.0. |
+
+The headline values come from Xiaomi's
+[pinned benchmark table](https://github.com/XiaomiRobotics/Xiaomi-Robotics-1/blob/6bc75afb791a1938750fe5fc0aee2b0f28cf87e2/README.md#-benchmark).
+The more precise RoboCasa and RoboCasa365 values come from the pinned
+[RoboCasa](https://github.com/XiaomiRobotics/Xiaomi-Robotics-1/blob/6bc75afb791a1938750fe5fc0aee2b0f28cf87e2/eval_robocasa/README.md#results)
+and
+[RoboCasa365](https://github.com/XiaomiRobotics/Xiaomi-Robotics-1/blob/6bc75afb791a1938750fe5fc0aee2b0f28cf87e2/eval_robocasa365/README.md#results)
+evaluation guides. We will preserve both reported values until an exact
+episode-level reproduction explains the rounding/configuration difference.
+Xiaomi does not report XR-1 results for Colosseum V2, VLA-Arena, DOMINO,
+EBench, or the other portfolio candidates; those entries are **not evaluated**,
+not zero scores.
 
 The first end-to-end target is the released XR-1 VLABench checkpoint because
 VLABench already exists in the pinned harness. This is not merely a model-server
@@ -91,14 +115,24 @@ observation, uses robot state and official tracks, and reports
 intention/progress metrics. We will fix and validate that benchmark adapter
 before claiming reproduction.
 
-The intended order is:
+Active XR-1 TODOs, in execution order:
 
-1. add a safe XR-1 `PredictModelServer` using WebSocket/MessagePack;
-2. upgrade and reproduce the official VLABench evaluation protocol;
-3. reproduce XR-1 on the existing RoboCasa adapter;
-4. add/backport RoboCasa365 and reproduce its official `target50` protocol;
-5. consider RoboDojo after its environment path and a suitable public
-   checkpoint are available.
+- [x] Pin the XR-1 source, checkpoint revisions, dependencies, and upstream
+  reference scores.
+- [x] Add a fail-closed XR-1 `PredictModelServer` over WebSocket/MessagePack and
+  unit-test the VLABench observation/action contract.
+- [ ] Finish the pinned VLABench container/assets and pass one complete
+  reset → inference → action → step → recording smoke test.
+- [ ] Add the five official VLABench tracks, deterministic episode manifests,
+  and SR/IS/PS aggregation; reproduce the published 59.1% SR.
+- [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
+  semantics; reproduce the published 74.5% headline / 74.2% detailed result.
+- [ ] Add or backport RoboCasa365, freeze its official `target50` suite, and
+  reproduce 1,432 successes from 2,500 episodes within declared tolerance.
+- [ ] Add RoboDojo only when a usable XR-1 checkpoint and an exact reproducible
+  simulation protocol are available.
+- [ ] Attempt XR-1 on other portfolio benchmarks only after defining a valid
+  embodiment adapter and declaring whether benchmark data entered training.
 
 We will not reuse XR-1's example pickle-over-TCP transport. Exact source,
 checkpoint, dependency, and protocol details are recorded in
@@ -131,6 +165,7 @@ python3 -m venv .venv
 .venv/bin/uv run ruff check .
 ```
 
-The active implementation queue and acceptance criteria live in
-[TODO.md](TODO.md). A checked box means the artifact exists; benchmark support
-still follows the stricter state definitions in the reproducibility policy.
+The README tracks the active baseline checklist; the complete implementation
+queue and acceptance criteria live in [TODO.md](TODO.md). A checked box means
+the artifact exists; benchmark support still follows the stricter state
+definitions in the reproducibility policy.
