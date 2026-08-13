@@ -2,9 +2,11 @@
 set -euo pipefail
 
 repo_root=/data/shared2/user/kampta/code/sim_benchmarks/.slide-worktrees/sim_benchmarks
-resume_root=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813
-original_root=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812
-result_root=/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813
+resume_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813}
+original_root=${XR1_ORIGINAL_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812}
+result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
+base_completed_manifest=${XR1_COMPLETED_MANIFEST:-${original_root}/resume/completed-55.json}
+session_name=${XR1_SESSION_NAME:-xr1_resume}
 checkpoint_root="${resume_root}/recovery-checkpoints"
 monitor_root="${resume_root}/recovery-checkpoint-monitor"
 python_bin="${repo_root}/.venv/bin/python"
@@ -43,7 +45,7 @@ checkpoint_once() {
          "${result_root}/shard2/recording-${eval_id}.sqlite" \
          "${result_root}/shard3/recording-${eval_id}.sqlite" \
     --track-dir "${original_root}/provenance/tracks" \
-    --base-completed-manifest "${original_root}/resume/completed-55.json" \
+    --base-completed-manifest "${base_completed_manifest}" \
     --output-dir "${output_dir}" >"${log_path}" 2>&1
   (cd "${output_dir}" && sha256sum -c SHA256SUMS) >"${output_dir}/verification.log"
   latest_next="${checkpoint_root}/latest.next"
@@ -53,9 +55,9 @@ checkpoint_once() {
 }
 
 checkpoint_once
-while tmux has-session -t xr1_resume 2>/dev/null; do
+while tmux has-session -t "${session_name}" 2>/dev/null; do
   remaining=${interval_seconds}
-  while [[ "${remaining}" -gt 0 ]] && tmux has-session -t xr1_resume 2>/dev/null; do
+  while [[ "${remaining}" -gt 0 ]] && tmux has-session -t "${session_name}" 2>/dev/null; do
     slice=300
     if [[ "${remaining}" -lt "${slice}" ]]; then
       slice=${remaining}
@@ -63,7 +65,7 @@ while tmux has-session -t xr1_resume 2>/dev/null; do
     sleep "${slice}"
     remaining=$((remaining - slice))
   done
-  if tmux has-session -t xr1_resume 2>/dev/null; then
+  if tmux has-session -t "${session_name}" 2>/dev/null; then
     checkpoint_once
   fi
 done

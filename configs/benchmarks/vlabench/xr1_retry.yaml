@@ -8,12 +8,12 @@ docker:
   image: "sim-benchmarks/vlabench:cf588fe"
   gpus: "all"
   volumes:
-    - "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/provenance/src/sim_benchmarks:/opt/venv/lib/python3.10/site-packages/sim_benchmarks:ro"
-    - "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/final/recovery/retry-manifest.json:/workspace/retry/manifest.json:ro"
+    - "${oc.env:XR1_REPORT_SRC,/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/provenance/src}/sim_benchmarks:/opt/venv/lib/python3.10/site-packages/sim_benchmarks:ro"
+    - "${oc.env:XR1_RETRY_MANIFEST,/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/final/recovery/retry-manifest.json}:/workspace/retry/manifest.json:ro"
   env:
     - "MUJOCO_EGL_DEVICE_ID=0"
 
-output_dir: "/data/shared1/cache/sim_benchmarks/vlabench/xr1_retry_20260813"
+output_dir: "${oc.env:XR1_RETRY_RESULT_ROOT,/data/shared1/cache/sim_benchmarks/vlabench/xr1_retry_20260813}"
 
 benchmarks:
   - benchmark: &benchmark "sim_benchmarks.benchmarks.vlabench_xr1:XR1VLABenchBenchmark"

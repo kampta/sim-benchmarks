@@ -90,7 +90,7 @@ below are upstream reference targets, not our measurements:
 
 | Benchmark | Xiaomi-published reference | Reproduced here | Current state |
 |---|---:|---:|---|
-| VLABench | 59.1% headline SR | — | One pinned 200-step XR-1 episode now passes end-to-end evaluation/recording; the full five-track score remains outstanding. |
+| VLABench | 59.1% headline SR | — | Full pinned run active: 101 exact identities are checksum-preserved and the remaining 2,359 are running in a fresh four-shard continuation. |
 | RoboCasa | 74.5% headline; detailed evaluation guide reports 74.2% over 24 × 100 episodes | — | Pinned harness adapter must be audited against RoboCasa v0.2. |
 | RoboCasa365 | 57.4% headline; detailed guide reports 1,432/2,500 = 57.28% | — | Adapter must be reviewed/backported and the `target50` protocol frozen. |
 | RoboDojo | 13.93% headline | — | No XR-1 checkpoint is published; no adapter is present in pinned v0.4.0. |
@@ -153,6 +153,12 @@ Active XR-1 TODOs, in execution order:
   `wait -n`, require three consecutive model-server health failures before
   interruption, stop sibling shards through the cleanup trap, and let the
   recovery monitor snapshot the resulting closed databases.
+- [x] Exercise crash continuation after a native simulator watchdog terminated
+  one first-generation shard: freeze 101 valid identities (55 original plus 46
+  resumed), retain the raw failed attempt separately, and restart all 2,359
+  pending identities across four shards. Parameterize auditing, checkpointing,
+  retry mounts, and final aggregation so the prior clean checkpoint is included
+  exactly once in the eventual 2,460-identity report.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
