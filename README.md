@@ -90,7 +90,7 @@ below are upstream reference targets, not our measurements:
 
 | Benchmark | Xiaomi-published reference | Reproduced here | Current state |
 |---|---:|---:|---|
-| VLABench | 59.1% headline SR | — | Full pinned run active: 139 exact identities are checksum-preserved and 2,321 remain in the current four-shard continuation. |
+| VLABench | 59.1% headline SR | — | Full pinned run active with exact-identity recovery checkpoints; the current validated count is recorded in the latest checkpoint manifest. |
 | RoboCasa | 74.5% headline; detailed evaluation guide reports 74.2% over 24 × 100 episodes | — | Pinned harness adapter must be audited against RoboCasa v0.2. |
 | RoboCasa365 | 57.4% headline; detailed guide reports 1,432/2,500 = 57.28% | — | Adapter must be reviewed/backported and the `target50` protocol frozen. |
 | RoboDojo | 13.93% headline | — | No XR-1 checkpoint is published; no adapter is present in pinned v0.4.0. |
@@ -172,9 +172,9 @@ Active XR-1 TODOs, in execution order:
   and produced sustained request backpressure. Continue with two replicas.
 - [x] Validate the accumulated multi-generation union independently of its
   continuation manifests: the original 55 identities exactly match their four
-  recording databases, and 12 clean continuation databases add 84 unique valid
-  identities for 139 total, with no duplicates or unexpected config hashes.
-  Preserve the audit and source checksums with the run artifacts.
+  recording databases, and clean continuation databases add unique valid
+  identities with no duplicates or unexpected config hashes. Preserve the
+  continuously refreshed audit and source checksums with the run artifacts.
 - [x] Prepare Spark2 for an exact distributed continuation: synchronize the
   pinned code, mamba runtime, track files, checkpoint, and byte-identical
   VLABench image; add global shard offsets and distributed finalization; and
