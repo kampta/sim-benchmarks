@@ -10,6 +10,7 @@ original_root=${XR1_ORIGINAL_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks
 current_run_root=${XR1_CURRENT_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_g4_two_server_20260813}
 current_result_root=${XR1_CURRENT_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_g4_two_server_20260813}
 current_base_manifest=${XR1_CURRENT_BASE_MANIFEST:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_g2_20260813/recovery-checkpoints/perf-audit-20260813T215143Z/completed-manifest.json}
+prior_clean_dirs=${XR1_PRIOR_CLEAN_DIRS:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/recovery-checkpoints/20260813T203128Z/clean:/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_g2_20260813/recovery-checkpoints/perf-audit-20260813T215143Z/clean}
 remote_repo_root=${XR1_REMOTE_REPO_ROOT:-/data/shared2/user/kampta/code/sim_benchmarks}
 label=${XR1_DUAL_LABEL:-xr1_resume_g5_dual_20260813}
 new_run_root=${XR1_DUAL_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/${label}}
@@ -65,6 +66,38 @@ for shard in 0 1 2 3; do
   current_database="${current_result_root}/shard${shard}/recording-${current_eval_id}.sqlite"
   [[ -f "${current_database}" ]] || { echo "missing current database ${current_database}" >&2; exit 1; }
 done
+IFS=: read -r -a prior_clean_dir_array <<<"${prior_clean_dirs}"
+for prior_clean_dir in "${prior_clean_dir_array[@]}"; do
+  [[ -d "${prior_clean_dir}" ]] || { echo "missing prior clean directory ${prior_clean_dir}" >&2; exit 1; }
+done
+base_manifest_count=$(PYTHONPATH="${repo_root}/src" "${repo_root}/.venv/bin/python" - \
+  "${current_base_manifest}" <<'PY'
+import sys
+from sim_benchmarks.benchmarks.vlabench_xr1 import load_completed_episode_identities
+print(len(load_completed_episode_identities(sys.argv[1])))
+PY
+)
+base_database_count=0
+base_databases=()
+for shard in 0 1 2 3; do
+  base_databases+=("${original_root}/shard${shard}/recording-xr1-full-flash-20260812.sqlite")
+done
+for prior_clean_dir in "${prior_clean_dir_array[@]}"; do
+  for shard in 0 1 2 3; do
+    base_databases+=("${prior_clean_dir}/shard${shard}.sqlite")
+  done
+done
+for database in "${base_databases[@]}"; do
+  [[ -f "${database}" ]] || { echo "missing prior database ${database}" >&2; exit 1; }
+  integrity=$(sqlite3 "${database}" 'PRAGMA quick_check;')
+  [[ "${integrity}" == ok ]] || { echo "prior database failed integrity: ${database}" >&2; exit 1; }
+  count=$(sqlite3 "${database}" 'SELECT COUNT(*) FROM episode_results;')
+  base_database_count=$((base_database_count + count))
+done
+if [[ "${base_database_count}" -ne "${base_manifest_count}" ]]; then
+  echo "prior database rows ${base_database_count} do not match manifest ${base_manifest_count}" >&2
+  exit 1
+fi
 
 local_head=$(git -C "${repo_root}" rev-parse HEAD)
 remote_head=$(ssh "${remote_host}" "git -C '${remote_repo_root}' rev-parse HEAD")
@@ -115,6 +148,16 @@ completed_manifest=${checkpoint_dir}/completed-manifest.json
 completed_count=$("${repo_root}/.venv/bin/python" -c \
   'import json,sys; print(json.load(open(sys.argv[1]))["completed_episode_count"])' \
   "${completed_manifest}")
+checkpoint_clean_count=0
+for shard in 0 1 2 3; do
+  checkpoint_clean_database=${checkpoint_dir}/clean/shard${shard}.sqlite
+  count=$(sqlite3 "${checkpoint_clean_database}" 'SELECT COUNT(*) FROM episode_results;')
+  checkpoint_clean_count=$((checkpoint_clean_count + count))
+done
+if [[ $((base_database_count + checkpoint_clean_count)) -ne "${completed_count}" ]]; then
+  echo "checkpoint clean union does not reconstruct completed manifest" >&2
+  exit 1
+fi
 printf '%s checkpoint_complete valid_identities=%s\n' "$(date -Is)" "${completed_count}"
 
 freeze_provenance() {
@@ -139,6 +182,13 @@ freeze_provenance() {
 
 mkdir -p "${new_run_root}/base" "${new_result_root}"
 cp "${completed_manifest}" "${new_run_root}/base/completed-manifest.json"
+prior_clean_file=${new_run_root}/base/prior-clean-dirs.txt
+: >"${prior_clean_file}.next"
+for prior_clean_dir in "${prior_clean_dir_array[@]}"; do
+  printf '%s\n' "${prior_clean_dir}" >>"${prior_clean_file}.next"
+done
+printf '%s\n' "${checkpoint_dir}/clean" >>"${prior_clean_file}.next"
+mv -f "${prior_clean_file}.next" "${prior_clean_file}"
 freeze_provenance "${new_run_root}"
 ssh "${remote_host}" "mkdir -p '${new_run_root}/base' '${new_result_root}'"
 rsync -a --checksum "${new_run_root}/base/" "${remote_host}:${new_run_root}/base/"

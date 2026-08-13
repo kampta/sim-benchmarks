@@ -18,6 +18,10 @@ report_src=${XR1_REPORT_SRC:-${resume_root}/provenance/src}
 retry_config=${XR1_RETRY_CONFIG:-${resume_root}/provenance/configs/benchmarks/vlabench/xr1_retry.yaml}
 retry_server_pid=
 
+if [[ -z "${prior_clean_dirs}" && -f "${resume_root}/base/prior-clean-dirs.txt" ]]; then
+  prior_clean_dirs=$(paste -sd: "${resume_root}/base/prior-clean-dirs.txt")
+fi
+
 cleanup() {
   if [[ -n "${retry_server_pid}" ]]; then
     kill "${retry_server_pid}" 2>/dev/null || true
