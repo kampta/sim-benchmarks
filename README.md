@@ -142,7 +142,9 @@ Active XR-1 TODOs, in execution order:
 - [x] Add read-only recovery checkpoints for an interrupted multi-day run:
   snapshot every live SQLite database, retain raw simulator errors, validate
   derived scored copies, and emit the exact completed-identity manifest needed
-  to continue only the missing episodes.
+  to continue only the missing episodes. A detached monitor creates and
+  verifies these checkpoints every six hours and once more when the runner
+  exits.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
