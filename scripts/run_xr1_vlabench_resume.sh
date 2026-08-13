@@ -10,7 +10,9 @@ run_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/
 result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
 track_dir=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/provenance/tracks
 shard_count=${XR1_SHARD_COUNT:-4}
-server_count=${XR1_SERVER_COUNT:-${shard_count}}
+local_shard_count=${XR1_LOCAL_SHARD_COUNT:-${shard_count}}
+shard_offset=${XR1_SHARD_OFFSET:-0}
+server_count=${XR1_SERVER_COUNT:-${local_shard_count}}
 base_port=${XR1_BASE_PORT:-18000}
 eval_prefix=${XR1_EVAL_PREFIX:-xr1-full-resume}
 eval_id="${eval_prefix}-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -22,12 +24,22 @@ if ! [[ "${shard_count}" =~ ^[1-9][0-9]*$ ]]; then
   echo "XR1_SHARD_COUNT must be a positive integer" >&2
   exit 2
 fi
-if ! [[ "${server_count}" =~ ^[1-9][0-9]*$ ]] || [[ "${server_count}" -gt "${shard_count}" ]]; then
-  echo "XR1_SERVER_COUNT must be a positive integer no greater than XR1_SHARD_COUNT" >&2
+if ! [[ "${local_shard_count}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "XR1_LOCAL_SHARD_COUNT must be a positive integer" >&2
   exit 2
 fi
-printf 'shards=%s\nservers=%s\nbase_port=%s\n' \
-  "${shard_count}" "${server_count}" "${base_port}" >"${run_root}/topology.txt"
+if ! [[ "${shard_offset}" =~ ^[0-9]+$ ]] \
+  || [[ $((shard_offset + local_shard_count)) -gt "${shard_count}" ]]; then
+  echo "XR1_SHARD_OFFSET + XR1_LOCAL_SHARD_COUNT must fit within XR1_SHARD_COUNT" >&2
+  exit 2
+fi
+if ! [[ "${server_count}" =~ ^[1-9][0-9]*$ ]] || [[ "${server_count}" -gt "${local_shard_count}" ]]; then
+  echo "XR1_SERVER_COUNT must be a positive integer no greater than XR1_LOCAL_SHARD_COUNT" >&2
+  exit 2
+fi
+printf 'global_shards=%s\nlocal_shards=%s\nshard_offset=%s\nservers=%s\nbase_port=%s\n' \
+  "${shard_count}" "${local_shard_count}" "${shard_offset}" "${server_count}" "${base_port}" \
+  >"${run_root}/topology.txt"
 
 exec 9>"${run_root}/runner.lock"
 if ! flock -n 9; then
@@ -130,8 +142,9 @@ for server in $(seq 0 $((server_count - 1))); do
   fi
 done
 
-for shard in $(seq 0 $((shard_count - 1))); do
-  port=$((base_port + (shard % server_count)))
+for local_shard in $(seq 0 $((local_shard_count - 1))); do
+  shard=$((shard_offset + local_shard))
+  port=$((base_port + (local_shard % server_count)))
   shard_result="${result_root}/shard${shard}"
   mkdir -p "${shard_result}"
   "${vla_eval}" run \
@@ -151,7 +164,8 @@ snapshot_recordings() {
   snapshot_dir="${run_root}/snapshots/latest"
   mkdir -p "${snapshot_dir}"
   : >"${run_root}/status.txt"
-  for shard in $(seq 0 $((shard_count - 1))); do
+  for local_shard in $(seq 0 $((local_shard_count - 1))); do
+    shard=$((shard_offset + local_shard))
     database="${result_root}/shard${shard}/recording-${eval_id}.sqlite"
     if [[ -f "${database}" ]]; then
       sqlite3 "${database}" ".backup '${snapshot_dir}/shard${shard}.next.sqlite'"
