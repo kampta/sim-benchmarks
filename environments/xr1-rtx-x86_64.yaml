@@ -1,0 +1,22 @@
+name: xr1-rtx-x86_64
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip=25.1.1
+  - aria2=1.37.0
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch==2.8.0
+      - torchvision==0.23.0
+      - torchaudio==2.8.0
+      - transformers==4.57.1
+      - https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+      - huggingface-hub==0.36.2
+      - hf-xet==1.6.0
+      - numpy==1.26.4
+      - Pillow==12.3.0
+      - einops==0.8.2
+      - ninja==1.13.0
+      - vla-eval @ git+https://github.com/allenai/vla-evaluation-harness.git@2680ab2fafe981c2dba63c6c1a4e7bb4415dbb56
+      - -e .

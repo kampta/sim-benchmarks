@@ -2,13 +2,15 @@
 set -euo pipefail
 
 repo_root=${XR1_REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}
-xr1_python=/data/shared1/envs/xr1/bin/python
-vla_eval="${repo_root}/.venv/bin/vla-eval"
-benchmark_config=configs/benchmarks/vlabench/xr1_official_resume.yaml
+xr1_python=${XR1_PYTHON:-/data/shared1/envs/xr1/bin/python}
+harness_python=${XR1_HARNESS_PYTHON:-${repo_root}/.venv/bin/python}
+vla_eval=${XR1_VLA_EVAL:-${repo_root}/.venv/bin/vla-eval}
+benchmark_config=${XR1_BENCHMARK_CONFIG:-configs/benchmarks/vlabench/xr1_official_resume.yaml}
+model_config=${XR1_MODEL_CONFIG:-configs/model_servers/xiaomi_robotics_1/vlabench_gb10.yaml}
 manifest=${XR1_COMPLETED_MANIFEST:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/resume/completed-55.json}
 run_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813}
 result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
-track_dir=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/provenance/tracks
+track_dir=${XR1_TRACK_DIR:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/provenance/tracks}
 shard_count=${XR1_SHARD_COUNT:-4}
 local_shard_count=${XR1_LOCAL_SHARD_COUNT:-${shard_count}}
 shard_offset=${XR1_SHARD_OFFSET:-0}
@@ -16,9 +18,37 @@ server_count=${XR1_SERVER_COUNT:-${local_shard_count}}
 base_port=${XR1_BASE_PORT:-18000}
 eval_prefix=${XR1_EVAL_PREFIX:-xr1-full-resume}
 eval_id=${XR1_EVAL_ID:-${eval_prefix}-$(date -u +%Y%m%dT%H%M%SZ)}
+cpu_spec=${XR1_CPUS:-0-19}
+server_gpu_ids=${XR1_SERVER_GPU_IDS:-0}
+cache_namespace=${XR1_CACHE_NAMESPACE:-xr1}
+
+cd "${repo_root}"
+
+for required_executable in "${xr1_python}" "${harness_python}" "${vla_eval}"; do
+  if [[ ! -x "${required_executable}" ]]; then
+    echo "required executable is missing: ${required_executable}" >&2
+    exit 2
+  fi
+done
+for required_path in "${benchmark_config}" "${model_config}" "${manifest}" "${track_dir}"; do
+  if [[ ! -e "${required_path}" ]]; then
+    echo "required XR-1 input is missing: ${required_path}" >&2
+    exit 2
+  fi
+done
+IFS=, read -r -a server_gpus <<<"${server_gpu_ids}"
+if [[ "${#server_gpus[@]}" -eq 0 ]]; then
+  echo "XR1_SERVER_GPU_IDS must name at least one GPU" >&2
+  exit 2
+fi
+for gpu_id in "${server_gpus[@]}"; do
+  if [[ ! "${gpu_id}" =~ ^[0-9]+$ ]]; then
+    echo "XR1_SERVER_GPU_IDS must be a comma-separated list of integer GPU IDs" >&2
+    exit 2
+  fi
+done
 
 mkdir -p "${run_root}/server_logs" "${run_root}/shards" "${run_root}/snapshots" "${result_root}"
-cd "${repo_root}"
 
 if ! [[ "${shard_count}" =~ ^[1-9][0-9]*$ ]]; then
   echo "XR1_SHARD_COUNT must be a positive integer" >&2
@@ -40,6 +70,9 @@ fi
 printf 'global_shards=%s\nlocal_shards=%s\nshard_offset=%s\nservers=%s\nbase_port=%s\n' \
   "${shard_count}" "${local_shard_count}" "${shard_offset}" "${server_count}" "${base_port}" \
   >"${run_root}/topology.txt"
+printf 'server_gpu_ids=%s\ncpus=%s\nbenchmark_config=%s\nmodel_config=%s\n' \
+  "${server_gpu_ids}" "${cpu_spec}" "${benchmark_config}" "${model_config}" \
+  >>"${run_root}/topology.txt"
 
 exec 9>"${run_root}/runner.lock"
 if ! flock -n 9; then
@@ -51,7 +84,7 @@ if find "${result_root}" -name 'recording-*.sqlite' -print -quit | grep -q .; th
   exit 1
 fi
 
-manifest_count=$(PYTHONPATH="${repo_root}/src" "${repo_root}/.venv/bin/python" - "${manifest}" "${track_dir}" <<'PY'
+manifest_count=$(PYTHONPATH="${repo_root}/src" "${harness_python}" - "${manifest}" "${track_dir}" <<'PY'
 import sys
 from pathlib import Path
 
@@ -89,11 +122,18 @@ export HF_MODULES_CACHE=/data/shared1/cache/huggingface/kampta/modules
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export TORCH_HOME=/data/shared1/cache/torch
-export TORCH_EXTENSIONS_DIR=/data/shared1/cache/torch/extensions/kampta/xr1
-export TORCHINDUCTOR_CACHE_DIR=/data/shared1/cache/torch/inductor/xr1_cuda130
-export TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
+export TORCH_EXTENSIONS_DIR="/data/shared1/cache/torch/extensions/kampta/${cache_namespace}"
+export TORCHINDUCTOR_CACHE_DIR=${XR1_TORCHINDUCTOR_CACHE_DIR:-/data/shared1/cache/torch/inductor/${cache_namespace}}
+if [[ -n "${XR1_TRITON_PTXAS_PATH:-}" ]]; then
+  if [[ ! -x "${XR1_TRITON_PTXAS_PATH}" ]]; then
+    echo "XR1_TRITON_PTXAS_PATH is not executable: ${XR1_TRITON_PTXAS_PATH}" >&2
+    exit 2
+  fi
+  export TRITON_PTXAS_PATH="${XR1_TRITON_PTXAS_PATH}"
+fi
 export PYTHONPATH="${repo_root}/src"
 export PYTHONUNBUFFERED=1
+export XR1_BENCHMARK_SRC="$(realpath "${repo_root}/src/sim_benchmarks")"
 mkdir -p "${HF_MODULES_CACHE}" "${TORCH_EXTENSIONS_DIR}" "${TORCHINDUCTOR_CACHE_DIR}"
 
 server_pids=()
@@ -119,8 +159,10 @@ trap cleanup EXIT INT TERM
 
 for server in $(seq 0 $((server_count - 1))); do
   port=$((base_port + server))
-  "${xr1_python}" src/sim_benchmarks/model_servers/xiaomi_robotics_1.py \
-    --config configs/model_servers/xiaomi_robotics_1/vlabench_gb10.yaml \
+  gpu_index=$((server % ${#server_gpus[@]}))
+  gpu_id=${server_gpus[gpu_index]}
+  CUDA_VISIBLE_DEVICES="${gpu_id}" "${xr1_python}" src/sim_benchmarks/model_servers/xiaomi_robotics_1.py \
+    --config "${model_config}" \
     --port "${port}" \
     >"${run_root}/server_logs/server${server}.log" 2>&1 &
   server_pids+=("$!")
@@ -153,7 +195,7 @@ for local_shard in $(seq 0 $((local_shard_count - 1))); do
     --output-dir "${shard_result}" \
     --eval-id "${eval_id}" \
     --shard-id "${shard}" --num-shards "${shard_count}" \
-    --cpus 0-19 --yes \
+    --cpus "${cpu_spec}" --yes \
     >"${run_root}/shards/shard${shard}.log" 2>&1 &
   client_pids+=("$!")
 done

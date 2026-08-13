@@ -200,6 +200,10 @@ Active XR-1 TODOs, in execution order:
   close every XR-1 process cleanly, freeze 150 valid identities, retain one
   deterministic and four shutdown-interrupted raw attempts as pending, and
   create a two-node-verified portable RTX migration bundle.
+- [x] Remove ARM/GB10 assumptions from the continuation path: parameterize the
+  harness and model environments, simulator image, CPU pool, track root, cache
+  namespace, and explicit model-server/simulator GPU placement; add fail-closed
+  x86_64 host preparation and same-episode throughput-gate launchers.
 - [ ] Build and pin an x86_64 VLABench image and XR-1 environment on the RTX
   station(s), pass the exact protocol smoke test, and require a material
   measured throughput improvement before launching the continuation.
@@ -217,6 +221,31 @@ Active XR-1 TODOs, in execution order:
 We will not reuse XR-1's example pickle-over-TCP transport. Exact source,
 checkpoint, dependency, and protocol details are recorded in
 [the XR-1 integration note](docs/models/XIAOMI_ROBOTICS_1.md).
+
+The RTX handoff is deliberately three-stage. Run these commands from a clean
+x86_64 checkout at the pinned commit; the full launcher refuses to start until
+the same three `select_painting` episodes are at least 2× faster than their
+checksum-preserved GB10 recordings:
+
+```bash
+# Builds /data/shared1/envs/xr1-rtx-x86_64, verifies the 150-identity bundle and
+# checkpoint, and builds the pinned CUDA 12.8 AMD64 simulator image.
+XR1_GPU_IDS=0,1 bash scripts/prepare_xr1_rtx_host.sh
+
+# Executes only the isolated three-episode throughput sample. These recordings
+# are labeled performance-only and are never included in final metrics.
+XR1_MODEL_GPU_ID=0 XR1_SIM_GPU_ID=0 bash scripts/benchmark_xr1_rtx.sh
+
+# After the gate passes, defaults conservatively to one model server and one
+# simulator shard per selected GPU. Override this only with a measured topology.
+XR1_GPU_IDS=0,1 XR1_CPUS=0-63 bash scripts/launch_xr1_vlabench_rtx.sh
+```
+
+All generated environments, caches, recordings, logs, and model paths follow
+the shared storage layout in `/home/kampta/.codex/AGENTS.md`. The authoritative
+migration input is
+`/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_rtx_migration_bundle_20260813T234213Z`;
+the launcher checksum-verifies it again before creating a fresh continuation.
 
 ## Fast evaluator validation: pi0.5
 

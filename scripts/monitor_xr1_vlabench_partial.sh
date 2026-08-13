@@ -10,7 +10,7 @@ session_name=${XR1_SESSION_NAME:-xr1_resume}
 local_shard_count=${XR1_LOCAL_SHARD_COUNT:-4}
 shard_offset=${XR1_SHARD_OFFSET:-0}
 remote_host=${XR1_REMOTE_HOST:-}
-python_bin="${repo_root}/.venv/bin/python"
+python_bin=${XR1_HARNESS_PYTHON:-${repo_root}/.venv/bin/python}
 audit_script="${resume_root}/provenance/scripts/audit_vlabench_partial.py"
 report_src="${resume_root}/provenance/src"
 

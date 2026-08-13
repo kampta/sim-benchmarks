@@ -800,6 +800,70 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             recovery_monitor.index("sha256sum -c SHA256SUMS"), recovery_monitor.index('mv "${mirror_next}"')
         )
 
+    def test_rtx_continuation_is_portable_and_throughput_gated(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        script_names = (
+            "prepare_xr1_rtx_host.sh",
+            "benchmark_xr1_rtx.sh",
+            "launch_xr1_vlabench_rtx.sh",
+            "run_xr1_vlabench_resume.sh",
+            "finalize_xr1_vlabench_resume.sh",
+        )
+        scripts = {
+            name: (repo_root / "scripts" / name).read_text(encoding="utf-8") for name in script_names
+        }
+        subprocess.run(
+            ["bash", "-n", *(str(repo_root / "scripts" / name) for name in script_names)],
+            check=True,
+        )
+
+        runner = scripts["run_xr1_vlabench_resume.sh"]
+        for variable in (
+            "XR1_PYTHON",
+            "XR1_HARNESS_PYTHON",
+            "XR1_VLA_EVAL",
+            "XR1_MODEL_CONFIG",
+            "XR1_BENCHMARK_CONFIG",
+            "XR1_TRACK_DIR",
+            "XR1_SERVER_GPU_IDS",
+            "XR1_CPUS",
+        ):
+            self.assertIn(variable, runner)
+        self.assertIn('CUDA_VISIBLE_DEVICES="${gpu_id}"', runner)
+
+        prepare = scripts["prepare_xr1_rtx_host.sh"]
+        self.assertIn('[[ "$(uname -m)" != x86_64 ]]', prepare)
+        self.assertIn("sha256sum -c BUNDLE_SHA256SUMS", prepare)
+        self.assertIn("torch.__version__", prepare)
+        self.assertIn("flash_attn.__version__", prepare)
+        self.assertIn("--platform linux/amd64", prepare)
+        self.assertIn("cf588fe60c0c7282174fe979f5913170cfe69017", prepare)
+
+        benchmark = scripts["benchmark_xr1_rtx.sh"]
+        self.assertIn("gb10_seconds_per_step=5.672262096774194", benchmark)
+        self.assertIn('"material_speedup": material_speedup', benchmark)
+        self.assertIn('"purpose": "XR-1 RTX continuation throughput gate;', benchmark)
+
+        launcher = scripts["launch_xr1_vlabench_rtx.sh"]
+        self.assertIn('assert gate["material_speedup"] is True', launcher)
+        self.assertIn("sha256sum -c BUNDLE_SHA256SUMS", launcher)
+        self.assertIn("base_valid=150", launcher)
+        self.assertIn("pending=2310", launcher)
+        self.assertIn("XR1_PRIOR_CLEAN_DIRS", launcher)
+        self.assertIn("xr1_finalize_rtx", launcher)
+
+        for config_name in (
+            "xr1_official.yaml",
+            "xr1_official_resume.yaml",
+            "xr1_retry.yaml",
+            "xr1_smoke.yaml",
+        ):
+            config = (repo_root / "configs" / "benchmarks" / "vlabench" / config_name).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("XR1_VLABENCH_IMAGE", config)
+            self.assertIn("XR1_SIM_GPU_IDS", config)
+
 
 if __name__ == "__main__":
     unittest.main()

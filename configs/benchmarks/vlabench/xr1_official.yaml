@@ -6,8 +6,8 @@ server:
   timeout: 300.0
 
 docker:
-  image: "sim-benchmarks/vlabench:cf588fe"
-  gpus: "all"
+  image: "${oc.env:XR1_VLABENCH_IMAGE,sim-benchmarks/vlabench:cf588fe}"
+  gpus: "${oc.env:XR1_SIM_GPU_IDS,all}"
   env:
     - "MUJOCO_EGL_DEVICE_ID=0"
 

@@ -16,10 +16,23 @@ base_port=${XR1_BASE_PORT:-18000}
 retry_result_root=${XR1_RETRY_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/$(basename "${resume_root}")_retry}
 final_root="${resume_root}/final"
 track_dir="${original_root}/provenance/tracks"
-python_bin="${repo_root}/.venv/bin/python"
+python_bin=${XR1_HARNESS_PYTHON:-${repo_root}/.venv/bin/python}
+xr1_python=${XR1_PYTHON:-/data/shared1/envs/xr1/bin/python}
+vla_eval=${XR1_VLA_EVAL:-${repo_root}/.venv/bin/vla-eval}
 report_src=${XR1_REPORT_SRC:-${resume_root}/provenance/src}
 retry_config=${XR1_RETRY_CONFIG:-${resume_root}/provenance/configs/benchmarks/vlabench/xr1_retry.yaml}
+retry_model_config=${XR1_MODEL_CONFIG:-${resume_root}/provenance/configs/model_servers-xiaomi_robotics_1/vlabench_gb10.yaml}
+retry_cpu_spec=${XR1_RETRY_CPUS:-0-4}
+retry_gpu_id=${XR1_RETRY_GPU_ID:-0}
+cache_namespace=${XR1_CACHE_NAMESPACE:-xr1}
 retry_server_pid=
+
+for required_executable in "${python_bin}" "${xr1_python}" "${vla_eval}"; do
+  if [[ ! -x "${required_executable}" ]]; then
+    echo "required executable is missing: ${required_executable}" >&2
+    exit 2
+  fi
+done
 
 if [[ -z "${prior_clean_dirs}" && -f "${resume_root}/base/prior-clean-dirs.txt" ]]; then
   prior_clean_dirs=$(paste -sd: "${resume_root}/base/prior-clean-dirs.txt")
@@ -200,18 +213,24 @@ if [[ "${retry_count}" -gt 0 ]]; then
   export HF_HUB_OFFLINE=1
   export TRANSFORMERS_OFFLINE=1
   export TORCH_HOME=/data/shared1/cache/torch
-  export TORCH_EXTENSIONS_DIR=/data/shared1/cache/torch/extensions/kampta/xr1
-  export TORCHINDUCTOR_CACHE_DIR=/data/shared1/cache/torch/inductor/xr1_cuda130
-  export TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
+  export TORCH_EXTENSIONS_DIR="/data/shared1/cache/torch/extensions/kampta/${cache_namespace}"
+  export TORCHINDUCTOR_CACHE_DIR=${XR1_TORCHINDUCTOR_CACHE_DIR:-/data/shared1/cache/torch/inductor/${cache_namespace}}
+  if [[ -n "${XR1_TRITON_PTXAS_PATH:-}" ]]; then
+    if [[ ! -x "${XR1_TRITON_PTXAS_PATH}" ]]; then
+      echo "XR1_TRITON_PTXAS_PATH is not executable: ${XR1_TRITON_PTXAS_PATH}" >&2
+      exit 2
+    fi
+    export TRITON_PTXAS_PATH="${XR1_TRITON_PTXAS_PATH}"
+  fi
   export PYTHONPATH="${report_src}"
   export PYTHONUNBUFFERED=1
   export XR1_REPORT_SRC="${report_src}"
   export XR1_RETRY_MANIFEST="${recovery_dir}/retry-manifest.json"
   export XR1_RETRY_RESULT_ROOT="${retry_result_root}"
 
-  /data/shared1/envs/xr1/bin/python \
+  CUDA_VISIBLE_DEVICES="${retry_gpu_id}" "${xr1_python}" \
     "${report_src}/sim_benchmarks/model_servers/xiaomi_robotics_1.py" \
-    --config "${resume_root}/provenance/configs/model_servers-xiaomi_robotics_1/vlabench_gb10.yaml" \
+    --config "${retry_model_config}" \
     --port "${base_port}" \
     >"${recovery_dir}/retry-server.log" 2>&1 &
   retry_server_pid=$!
@@ -240,12 +259,12 @@ if [[ "${retry_count}" -gt 0 ]]; then
     mkdir -p "${retry_result_dir}" "${retry_attempt_dir}"
 
     retry_eval_rc=0
-    "${repo_root}/.venv/bin/vla-eval" run \
+    "${vla_eval}" run \
       --config "${retry_config}" \
       --server-url "ws://127.0.0.1:${base_port}" \
       --output-dir "${retry_result_dir}" \
       --eval-id "${retry_eval_id}" \
-      --cpus 0-4 --yes \
+      --cpus "${retry_cpu_spec}" --yes \
       >"${retry_attempt_dir}/eval.log" 2>&1 || retry_eval_rc=$?
     printf 'exit_code=%s\n' "${retry_eval_rc}" >"${retry_attempt_dir}/eval-exit-code.txt"
 
