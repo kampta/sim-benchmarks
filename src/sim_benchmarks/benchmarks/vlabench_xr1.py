@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from collections.abc import Callable
 from contextlib import suppress
 from hashlib import sha256
@@ -28,6 +29,63 @@ OFFICIAL_TRACKS = (
     "track_4_semantic_instruction",
     "track_6_unseen_texture",
 )
+EpisodeIdentity = tuple[str, str, int, str]
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def task_episode_identity(task: Task) -> EpisodeIdentity:
+    """Return the complete pinned identity used to resume an official episode."""
+
+    suite = task.get("suite")
+    task_name = task.get("name")
+    episode_index = task.get("episode_index")
+    config_sha = task.get("episode_config_sha256")
+    if suite not in OFFICIAL_TRACKS:
+        raise ValueError(f"invalid official VLABench suite in episode identity: {suite!r}")
+    if not isinstance(task_name, str) or not task_name:
+        raise TypeError(f"invalid VLABench task name in episode identity: {task_name!r}")
+    if isinstance(episode_index, bool) or not isinstance(episode_index, int) or episode_index < 0:
+        raise TypeError(f"invalid VLABench episode index in episode identity: {episode_index!r}")
+    if not isinstance(config_sha, str) or _SHA256_PATTERN.fullmatch(config_sha) is None:
+        raise ValueError(f"invalid VLABench config SHA-256 in episode identity: {config_sha!r}")
+    return suite, task_name, episode_index, config_sha
+
+
+def load_completed_episode_identities(path: str | os.PathLike[str]) -> set[EpisodeIdentity]:
+    """Load and strictly validate a versioned XR-1 resume manifest."""
+
+    manifest_path = Path(path)
+    with manifest_path.open(encoding="utf-8") as stream:
+        manifest = json.load(stream)
+    if not isinstance(manifest, dict):
+        raise TypeError(f"{manifest_path}: resume manifest must be an object")
+    if manifest.get("schema_version") != 1:
+        raise ValueError(f"{manifest_path}: unsupported resume manifest schema_version")
+    entries = manifest.get("completed_episodes")
+    if not isinstance(entries, list):
+        raise TypeError(f"{manifest_path}: completed_episodes must be a list")
+
+    identities: set[EpisodeIdentity] = set()
+    expected_keys = {"suite", "task_name", "episode_index", "episode_config_sha256"}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise TypeError(f"{manifest_path}: completed_episodes[{index}] must be an object")
+        if set(entry) != expected_keys:
+            raise ValueError(
+                f"{manifest_path}: completed_episodes[{index}] must contain exactly {sorted(expected_keys)}"
+            )
+        identity = task_episode_identity(
+            {
+                "suite": entry["suite"],
+                "name": entry["task_name"],
+                "episode_index": entry["episode_index"],
+                "episode_config_sha256": entry["episode_config_sha256"],
+            }
+        )
+        if identity in identities:
+            raise ValueError(f"{manifest_path}: duplicate completed episode identity {identity}")
+        identities.add(identity)
+    return identities
 
 
 def resolve_vlabench_track_path(eval_track: str, root: str | os.PathLike[str] | None = None) -> Path:
@@ -157,6 +215,7 @@ class XR1VLABenchBenchmark(VLABenchBenchmark):
         episode_limit: int = 50,
         seed: int = 42,
         intention_score_threshold: float = 0.1,
+        completed_episode_manifest: str | None = None,
     ) -> None:
         super().__init__(tasks=tasks, robot=robot, max_steps=max_steps)
         self._xr1_position_offset = np.asarray(position_offset, dtype=np.float32)
@@ -171,6 +230,7 @@ class XR1VLABenchBenchmark(VLABenchBenchmark):
         self._episode_limit = episode_limit
         self._seed = seed
         self._intention_score_threshold = intention_score_threshold
+        self._completed_episode_manifest = completed_episode_manifest
         self._episode_max_steps = max_steps
         self._episode_step = 0
 
@@ -178,12 +238,30 @@ class XR1VLABenchBenchmark(VLABenchBenchmark):
         if self._eval_track is None:
             return super().get_tasks()
         track_path = resolve_vlabench_track_path(self._eval_track)
-        return load_vlabench_episode_tasks(
+        tasks = load_vlabench_episode_tasks(
             track_path,
             suite=self._eval_track,
             selected_tasks=self._selected_tasks,
             episode_limit=self._episode_limit,
         )
+        if self._completed_episode_manifest is None:
+            return tasks
+
+        completed = load_completed_episode_identities(self._completed_episode_manifest)
+        full_track = load_vlabench_episode_tasks(
+            track_path,
+            suite=self._eval_track,
+            episode_limit=50,
+        )
+        expected = {task_episode_identity(task) for task in full_track}
+        same_track = {identity for identity in completed if identity[0] == self._eval_track}
+        unexpected = sorted(same_track - expected)
+        if unexpected:
+            raise ValueError(
+                f"resume manifest contains {len(unexpected)} unknown identities for {self._eval_track}: "
+                f"{unexpected[:3]}"
+            )
+        return [task for task in tasks if task_episode_identity(task) not in completed]
 
     def reset(self, task: Task) -> Any:
         """Load the exact episode configuration used by Xiaomi's dispatcher."""

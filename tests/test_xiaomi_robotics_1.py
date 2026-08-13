@@ -2,21 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 
 import numpy as np
 from vla_eval.model_servers.base import SessionContext
 from vla_eval.model_servers.predict import PredictModelServer
 
 from sim_benchmarks.benchmarks.vlabench_xr1 import (
+    XR1VLABenchBenchmark,
+    load_completed_episode_identities,
     load_vlabench_episode_tasks,
     make_xr1_vlabench_observation,
     resolve_episode_max_steps,
+    task_episode_identity,
 )
 from sim_benchmarks.model_servers.xiaomi_robotics_1 import (
     XiaomiRobotics1VLABenchServer,
@@ -213,6 +218,95 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             },
         )
         self.assertRegex(tasks[0]["episode_config_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_resume_manifest_filters_only_the_exact_four_part_identity(self) -> None:
+        track = "track_1_in_distribution"
+        config = {"seed": 1}
+        digest = hashlib.sha256(json.dumps(config, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            track_dir = root / "configs" / "evaluation" / "tracks"
+            track_dir.mkdir(parents=True)
+            (track_dir / f"{track}.json").write_text(
+                json.dumps({"select_fruit": [config]}), encoding="utf-8"
+            )
+            manifest = root / "completed.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "completed_episodes": [
+                            {
+                                "suite": "track_2_cross_category",
+                                "task_name": "select_fruit",
+                                "episode_index": 0,
+                                "episode_config_sha256": digest,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            benchmark = XR1VLABenchBenchmark(
+                eval_track=track,
+                episode_limit=1,
+                completed_episode_manifest=str(manifest),
+            )
+            with mock.patch.dict(os.environ, {"VLABENCH_ROOT": str(root)}):
+                tasks = benchmark.get_tasks()
+            self.assertEqual(len(tasks), 1)
+
+            identity = task_episode_identity(tasks[0])
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["completed_episodes"].append(
+                {
+                    "suite": identity[0],
+                    "task_name": identity[1],
+                    "episode_index": identity[2],
+                    "episode_config_sha256": identity[3],
+                }
+            )
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.dict(os.environ, {"VLABENCH_ROOT": str(root)}):
+                self.assertEqual(benchmark.get_tasks(), [])
+
+    def test_resume_manifest_rejects_duplicates_and_unknown_same_track_identity(self) -> None:
+        track = "track_1_in_distribution"
+        entry = {
+            "suite": track,
+            "task_name": "select_fruit",
+            "episode_index": 0,
+            "episode_config_sha256": "a" * 64,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "completed.json"
+            manifest.write_text(
+                json.dumps({"schema_version": 1, "completed_episodes": [entry, entry]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate completed episode"):
+                load_completed_episode_identities(manifest)
+
+            track_dir = root / "configs" / "evaluation" / "tracks"
+            track_dir.mkdir(parents=True)
+            (track_dir / f"{track}.json").write_text(
+                json.dumps({"select_fruit": [{"seed": 1}]}), encoding="utf-8"
+            )
+            manifest.write_text(
+                json.dumps({"schema_version": 1, "completed_episodes": [entry]}),
+                encoding="utf-8",
+            )
+            benchmark = XR1VLABenchBenchmark(
+                eval_track=track,
+                episode_limit=1,
+                completed_episode_manifest=str(manifest),
+            )
+            with (
+                mock.patch.dict(os.environ, {"VLABENCH_ROOT": str(root)}),
+                self.assertRaisesRegex(ValueError, "unknown identities"),
+            ):
+                benchmark.get_tasks()
 
     def test_episode_horizon_matches_official_default_and_task_override(self) -> None:
         self.assertEqual(resolve_episode_max_steps({}), 200)

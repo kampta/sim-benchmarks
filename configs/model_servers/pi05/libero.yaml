@@ -1,0 +1,12 @@
+# Exact AllenAI reproduction stack: vla-eval v0.4.0, LeRobot v0.6.0, and the
+# public LIBERO checkpoint pinned to its resolved local revision.
+script: "src/sim_benchmarks/model_servers/pi05.py"
+args:
+  policy_type: pi05
+  checkpoint: "/data/shared1/models/pi05_libero_finetuned"
+  state_key: observation.state
+  device: cuda
+  chunk_size: 10
+  image_keys:
+    agentview: observation.images.image
+    wrist: observation.images.image2

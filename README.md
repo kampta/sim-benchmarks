@@ -130,6 +130,15 @@ Active XR-1 TODOs, in execution order:
   `6bc75afb791a1938750fe5fc0aee2b0f28cf87e2`, including camera order, prompt,
   state frame, action accumulation, five-step replanning, gripper command,
   reset behavior, horizons, metrics, and task-macro aggregation.
+- [x] Preserve and validate the first 55 scored episodes, then add fail-closed
+  resume filtering keyed by `(track, task, episode index, config SHA-256)` so
+  no completed rollout is repeated or confused with an identical config in a
+  different track.
+- [x] Resume the remaining 2,405 episodes across four isolated model servers
+  and four five-core simulator shards, with periodic SQLite backups and a
+  finalizer that preserves simulator errors, retries only their exact pinned
+  identities up to three times, and publishes only after exact 2,460-identity
+  coverage passes.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
@@ -143,6 +152,70 @@ Active XR-1 TODOs, in execution order:
 We will not reuse XR-1's example pickle-over-TCP transport. Exact source,
 checkpoint, dependency, and protocol details are recorded in
 [the XR-1 integration note](docs/models/XIAOMI_ROBOTICS_1.md).
+
+## Fast evaluator validation: pi0.5
+
+Before adding more baselines, we are using the public
+[`lerobot/pi05_libero_finetuned_v044`](https://huggingface.co/lerobot/pi05_libero_finetuned_v044)
+checkpoint to measure and tune end-to-end evaluator throughput. This is a
+LIBERO-trained checkpoint, so LIBERO-Object is a valid native-policy acceptance
+test. It remains a compatibility and performance gate—not a primary scientific
+benchmark, and not evidence that pi0.5 supports another benchmark's embodiment.
+
+The checkpoint, LeRobot v0.6.0 source, normalization files, and LIBERO container
+are pinned by revision or digest in the
+[`pi05_libero` model manifest](src/sim_benchmarks/manifests/models/pi05_libero.json).
+The checkpoint's saved processor names a gated Hugging Face PaliGemma repo. The
+launcher instead uses Physical Intelligence's anonymously published tokenizer,
+pinned locally by SHA-256, so evaluation does not depend on gated access or the
+network.
+The server uses the same WebSocket/MessagePack data plane as every other policy.
+It returns action chunks and the harness executes ten actions before replanning.
+
+The released LIBERO image is AMD64-only. On this ARM64 GB10, use the dedicated
+native mamba environment at `/data/shared1/envs/libero` with LIBERO commit
+`8f1084e3132a39270c3a13ebe37270a43ece2a01` and pass `--no-docker`. Do not use
+QEMU emulation for scored runs. A null-policy calibration completed all ten
+LIBERO-Object tasks (one full-horizon episode each) in 21 seconds wall time with
+ten shards: 2,800 steps, zero runtime errors, and ten valid SQLite recordings.
+This measures evaluator capacity only; its 0% policy score is not a baseline.
+The scored pi0.5 Object run will be compared against LeRobot's 99.0% target,
+[AllenAI's 100/100 reproduction](https://github.com/allenai/vla-evaluation-harness/blob/2680ab2fafe981c2dba63c6c1a4e7bb4415dbb56/docs/reproductions/lerobot.md),
+and the official OpenPI checkpoint's 98.2%.
+
+The exact AllenAI protocol now reproduces at **100/100**: ten tasks x ten
+episodes, seed 7, 13,457 simulator steps, zero errors, and 349 seconds rollout
+wall time after 145 seconds of model startup. All ten SQLite databases pass
+`PRAGMA quick_check` and contain one step row per recorded simulator step.
+Warm compiled throughput is 10/10 episodes in 39 seconds. Results are preserved
+under `/data/shared2/user/kampta/logs/sim_benchmarks/libero/pi05_reproduction`.
+
+Active pi0.5/evaluator TODOs:
+
+- [x] Pin the LeRobot source, checkpoint files, normalization statistics, model
+  license, benchmark image, camera mapping, and action-chunk protocol.
+- [x] Create the shared `pi05_v060` mamba environment with the exact LeRobot
+  v0.6.0 source used by AllenAI's reproduction, without modifying the harness.
+- [x] Replace the AMD64-only benchmark image on GB10 with a pinned native ARM64
+  LIBERO mamba runtime; validate reset, EGL render, observation construction,
+  stepping, WebSocket transport, and SQLite persistence.
+- [x] Run the null-policy ten-shard capacity gate: 10 episodes and 2,800 steps
+  in 21 seconds wall time, with zero errors and valid per-shard databases.
+- [x] Re-run the LeRobot v0.6.0 acceptance gates: the model loader reports all
+  keys loaded; the smoke episode succeeded in 129 steps; and the ten-task gate
+  scored 10/10 with ten valid databases. Its 93-second wall time includes
+  contention from another GPU workload, so it is not the final speed number.
+- [x] Validate compiled inference on GB10 with CUDA 13's system `ptxas`; the
+  Triton-bundled CUDA 12.8 assembler cannot target `sm_121a`.
+- [x] Reproduce AllenAI's 100/100 protocol (10 tasks x 10 episodes): 100/100,
+  zero errors, 13,457 steps, and 349 seconds rollout wall time.
+- [ ] Select the fastest stable shard count from measured results on this GB10;
+  do not assume that more simulator containers are always faster.
+- [ ] Run the standard 500-episode LIBERO-Object suite with the validated
+  ten-shard native runner and compare it with the published targets.
+- [ ] Turn the validated launcher/config/result layout into the template for
+  subsequent baselines; add pi0.5 to other benchmarks only with a declared,
+  tested embodiment adapter or a benchmark-native checkpoint.
 
 ## Evaluation data integrity
 

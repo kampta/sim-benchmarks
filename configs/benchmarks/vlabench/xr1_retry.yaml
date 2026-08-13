@@ -1,0 +1,59 @@
+# Retry only identities omitted by the generated completed-episode manifest.
+# The fail-closed recovery preparer writes that manifest after the main run.
+server:
+  url: "ws://localhost:18000"
+  timeout: 300.0
+
+docker:
+  image: "sim-benchmarks/vlabench:cf588fe"
+  gpus: "all"
+  volumes:
+    - "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/provenance/src/sim_benchmarks:/opt/venv/lib/python3.10/site-packages/sim_benchmarks:ro"
+    - "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813/final/recovery/retry-manifest.json:/workspace/retry/manifest.json:ro"
+  env:
+    - "MUJOCO_EGL_DEVICE_ID=0"
+
+output_dir: "/data/shared1/cache/sim_benchmarks/vlabench/xr1_retry_20260813"
+
+benchmarks:
+  - benchmark: &benchmark "sim_benchmarks.benchmarks.vlabench_xr1:XR1VLABenchBenchmark"
+    subname: "track_1_in_distribution"
+    episodes_per_task: 1
+    max_steps: 300
+    params: &params
+      robot: "franka"
+      max_steps: 300
+      eval_track: "track_1_in_distribution"
+      episode_limit: 50
+      seed: 42
+      intention_score_threshold: 0.1
+      position_offset: [0.0, -0.4, 0.78]
+      completed_episode_manifest: "/workspace/retry/manifest.json"
+  - benchmark: *benchmark
+    subname: "track_2_cross_category"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_2_cross_category"
+  - benchmark: *benchmark
+    subname: "track_3_common_sense"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_3_common_sense"
+  - benchmark: *benchmark
+    subname: "track_4_semantic_instruction"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_4_semantic_instruction"
+  - benchmark: *benchmark
+    subname: "track_6_unseen_texture"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_6_unseen_texture"

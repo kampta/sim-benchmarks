@@ -26,10 +26,18 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(all("evaluation_role" in item for item in catalog["benchmark_native"]))
         self.assertTrue(all("use" not in item for item in catalog["benchmark_native"]))
 
-    def test_xiaomi_robotics_1_model_source_is_pinned(self) -> None:
+    def test_model_sources_are_pinned(self) -> None:
         manifests = model_manifests()
-        self.assertEqual([item["id"] for item in manifests], ["xiaomi_robotics_1"])
-        xr1 = manifests[0]
+        self.assertEqual([item["id"] for item in manifests], ["pi05_libero", "xiaomi_robotics_1"])
+        self.assertTrue(all(len(item["revision"]) == 40 for item in manifests))
+
+        by_id = {item["id"]: item for item in manifests}
+        pi05 = by_id["pi05_libero"]
+        self.assertEqual(pi05["benchmark_runtime"]["suite"], "libero_object")
+        self.assertTrue(all(len(checkpoint["revision"]) == 40 for checkpoint in pi05["checkpoints"]))
+        self.assertTrue(all(len(weight["sha256"]) == 64 for weight in pi05["checkpoints"][0]["weight_files"]))
+
+        xr1 = by_id["xiaomi_robotics_1"]
         self.assertEqual(len(xr1["revision"]), 40)
         self.assertEqual(xr1["kind"], "model_baseline")
         self.assertFalse(xr1["transport"]["reuse_upstream_transport"])

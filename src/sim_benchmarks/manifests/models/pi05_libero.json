@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "id": "pi05_libero",
+  "name": "pi0.5 LIBERO (LeRobot v0.6.0)",
+  "kind": "model_baseline",
+  "source": "https://github.com/huggingface/lerobot.git",
+  "revision": "30da8e687a6dfc617fcd94afc367ac7071c376ce",
+  "revision_date": "2026-08-13",
+  "source_license": "Apache-2.0",
+  "status": "reproduced",
+  "runtime": {
+    "environment": "/data/shared1/envs/pi05_v060",
+    "python": "3.12.13",
+    "torch": "2.9.1+cu130",
+    "lerobot": "0.6.0",
+    "transformers": "5.5.4",
+    "tokenizers": "0.22.2",
+    "sentencepiece": "0.2.1",
+    "protobuf": "6.33.5",
+    "device": "cuda",
+    "compile_model": true,
+    "triton_ptxas": "/usr/local/cuda/bin/ptxas",
+    "triton_ptxas_version": "13.0.88",
+    "inductor_cache": "/data/shared1/cache/torch/inductor/pi05_v060_cuda130"
+  },
+  "checkpoints": [
+    {
+      "benchmark": "libero",
+      "id": "lerobot/pi05_libero_finetuned",
+      "revision": "8e174154ef5f6c60a8da12ae99c303d8963138c1",
+      "license": "gemma",
+      "training_dataset": "HuggingFaceVLA/libero",
+      "weight_files": [
+        {
+          "path": "model.safetensors",
+          "size": 7473096344,
+          "sha256": "877b3ec1130548b69af7f8aeef3ec9d3fc7738040f0b9beb490857ec970997ae"
+        },
+        {
+          "path": "policy_preprocessor_step_2_normalizer_processor.safetensors",
+          "size": 7668,
+          "sha256": "a002c0df7f79c5b169c5a899ad151d4ea1bed246c7d82bd93ed1556558d517a9"
+        },
+        {
+          "path": "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
+          "size": 7668,
+          "sha256": "a002c0df7f79c5b169c5a899ad151d4ea1bed246c7d82bd93ed1556558d517a9"
+        }
+      ]
+    }
+  ],
+  "tokenizer": {
+    "source": "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model",
+    "source_owner": "Physical Intelligence openpi",
+    "local_path": "/data/shared1/models/paligemma-tokenizer-official",
+    "model_sha256": "8986bb4f423f07f8c7f70d0dbe3526fb2316056c17bae71b1ea975e77a168fc6",
+    "transformers_metadata_source": "Shakalaka/paligemma-3b-pt-224",
+    "transformers_metadata_revision": "1639645332c7987b3a83a2111ea1582c877c8849",
+    "metadata_sha256": {
+      "tokenizer_config.json": "5a4d5042efb7f465976b1c7257dc3b080e8c1a5e5afabe43a0ff7d31e45025ad",
+      "special_tokens_map.json": "c87885c12d55c60133110a234291db5ac952e99e83d9735099d304cb4d45914d",
+      "added_tokens.json": "7d0bad90030d638a4bf89a82e91206e25f1fbe0012f14bca21666a64b643bc49"
+    },
+    "note": "The checkpoint processor references gated google/paligemma-3b-pt-224. The official anonymous SentencePiece model is used locally with pinned, public Transformers compatibility metadata."
+  },
+  "benchmark_runtime": {
+    "upstream_amd64_image": "ghcr.io/allenai/vla-evaluation-harness/libero@sha256:2a4566009395888ae3904bde87cffceea7526e2e0f0667b933cae0e8e6134413",
+    "native_arm64_environment": "/data/shared1/envs/libero",
+    "libero_source": "https://github.com/Lifelong-Robot-Learning/LIBERO.git",
+    "libero_revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+    "suite": "libero_object",
+    "action_chunk_size": 10
+  },
+  "transport": {
+    "integration": "vla_eval_websocket_msgpack"
+  },
+  "artifacts": {
+    "model_server": "src/sim_benchmarks/model_servers/pi05.py",
+    "model_config": "configs/model_servers/pi05/libero.yaml",
+    "smoke_config": "configs/benchmarks/libero/pi05_smoke.yaml",
+    "throughput_config": "configs/benchmarks/libero/pi05_throughput.yaml",
+    "reproduction_config": "configs/benchmarks/libero/pi05_reproduction.yaml",
+    "full_config": "configs/benchmarks/libero/pi05_full.yaml",
+    "full_runner": "scripts/run_pi05_libero_full_native.sh"
+  },
+  "v044_diagnostic": {
+    "date": "2026-08-13",
+    "smoke": {
+      "episodes": 1,
+      "successes": 1,
+      "steps": 128
+    },
+    "ten_task_gate": {
+      "episodes": 10,
+      "successes": 10,
+      "steps": 1315,
+      "wall_seconds": 46,
+      "shards": 10,
+      "database_quick_checks": 10
+    },
+    "aborted_full_run": {
+      "episodes": 37,
+      "successes": 34,
+      "steps": 5543,
+      "database_quick_checks": 10
+    }
+  },
+  "validation": {
+    "date": "2026-08-13",
+    "smoke": {
+      "episodes": 1,
+      "successes": 1,
+      "steps": 129
+    },
+    "ten_task_gate": {
+      "episodes": 10,
+      "successes": 10,
+      "steps": 1424,
+      "wall_seconds": 93,
+      "shards": 10,
+      "database_quick_checks": 10,
+      "compile_model": false,
+      "gpu_contention": true
+    },
+    "compiled_ten_task_gate": {
+      "episodes": 10,
+      "successes": 10,
+      "steps": 1323,
+      "wall_seconds": 39,
+      "shards": 10,
+      "database_quick_checks": 10
+    },
+    "allenai_reproduction": {
+      "eval_id": "pi05-libero-object-100-20260813T174434Z",
+      "episodes": 100,
+      "successes": 100,
+      "steps": 13457,
+      "server_startup_seconds": 145,
+      "rollout_wall_seconds": 349,
+      "shards": 10,
+      "database_quick_checks": 10,
+      "step_rows": 13457,
+      "reported_target": 1.0,
+      "reproduced_score": 1.0,
+      "result_root": "/data/shared2/user/kampta/logs/sim_benchmarks/libero/pi05_reproduction"
+    }
+  },
+  "notes": "The v0.4.4 diagnostic reported a missing language-embedding key and did not explicitly reconstruct it, so those scores are not a baseline. Scored runs use LeRobot v0.6.0, which reconstructs the tied embedding from lm_head.weight and reports that all keys loaded. This is not a valid direct baseline for benchmarks with different embodiments or action spaces."
+}

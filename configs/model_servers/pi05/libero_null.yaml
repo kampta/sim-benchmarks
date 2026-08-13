@@ -1,0 +1,5 @@
+# Infrastructure-only null policy for measuring evaluator overhead.
+script: "src/sim_benchmarks/model_servers/libero_null.py"
+args:
+  chunk_size: 10
+  port: 18009
