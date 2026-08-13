@@ -90,7 +90,7 @@ below are upstream reference targets, not our measurements:
 
 | Benchmark | Xiaomi-published reference | Reproduced here | Current state |
 |---|---:|---:|---|
-| VLABench | 59.1% headline SR | — | Full pinned run active with exact-identity recovery checkpoints; the current validated count is recorded in the latest checkpoint manifest. |
+| VLABench | 59.1% headline SR | — | GB10 run stopped at a verified 150/2,460 identities; 2,310 pending identities and every prior recording are packaged for RTX migration. |
 | RoboCasa | 74.5% headline; detailed evaluation guide reports 74.2% over 24 × 100 episodes | — | Pinned harness adapter must be audited against RoboCasa v0.2. |
 | RoboCasa365 | 57.4% headline; detailed guide reports 1,432/2,500 = 57.28% | — | Adapter must be reviewed/backported and the `target50` protocol frozen. |
 | RoboDojo | 13.93% headline | — | No XR-1 checkpoint is published; no adapter is present in pinned v0.4.0. |
@@ -196,7 +196,15 @@ Active XR-1 TODOs, in execution order:
   identity layout with four original and eight resumed shards, proving shard
   discovery, immutable backups, recovery cleaning, exact coverage, task-macro
   reporting, comparison output, and final checksum/postcondition gates.
-- [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
+- [x] Stop spending GB10 time after measuring roughly 18 valid episodes/hour:
+  close every XR-1 process cleanly, freeze 150 valid identities, retain one
+  deterministic and four shutdown-interrupted raw attempts as pending, and
+  create a two-node-verified portable RTX migration bundle.
+- [ ] Build and pin an x86_64 VLABench image and XR-1 environment on the RTX
+  station(s), pass the exact protocol smoke test, and require a material
+  measured throughput improvement before launching the continuation.
+- [ ] Run the remaining 2,310 identities, complete the five-track suite, and
+  compare published versus reproduced full-suite/per-track SR, PS, and IS.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
 - [ ] Add or backport RoboCasa365, freeze its official `target50` suite, and
