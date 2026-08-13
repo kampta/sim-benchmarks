@@ -6,7 +6,7 @@ original_root=${XR1_ORIGINAL_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks
 resume_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813}
 result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
 base_completed_manifest=${XR1_COMPLETED_MANIFEST:-${original_root}/resume/completed-55.json}
-prior_clean_dir=${XR1_PRIOR_CLEAN_DIR:-}
+prior_clean_dirs=${XR1_PRIOR_CLEAN_DIRS:-${XR1_PRIOR_CLEAN_DIR:-}}
 session_name=${XR1_SESSION_NAME:-xr1_resume}
 base_port=${XR1_BASE_PORT:-18000}
 retry_result_root=${XR1_RETRY_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/$(basename "${resume_root}")_retry}
@@ -67,17 +67,21 @@ for shard in 0 1 2 3; do
   prior_databases+=("${original_snapshot}")
   resume_databases+=("${resume_snapshot}")
 done
-if [[ -n "${prior_clean_dir}" ]]; then
-  for shard in 0 1 2 3; do
-    prior_clean="${prior_clean_dir}/shard${shard}.sqlite"
-    if [[ ! -f "${prior_clean}" ]]; then
-      printf '%s missing prior clean database=%s\n' \
-        "$(date -Is)" "${prior_clean}" >"${resume_root}/finalizer-status.txt"
-      exit 1
-    fi
-    prior_snapshot="${snapshot_dir}/prior-clean-shard${shard}.sqlite"
-    sqlite3 "${prior_clean}" ".backup '${prior_snapshot}'"
-    prior_databases+=("${prior_snapshot}")
+if [[ -n "${prior_clean_dirs}" ]]; then
+  IFS=: read -r -a clean_dirs <<<"${prior_clean_dirs}"
+  for clean_index in "${!clean_dirs[@]}"; do
+    prior_clean_dir=${clean_dirs[clean_index]}
+    for shard in 0 1 2 3; do
+      prior_clean="${prior_clean_dir}/shard${shard}.sqlite"
+      if [[ ! -f "${prior_clean}" ]]; then
+        printf '%s missing prior clean database=%s\n' \
+          "$(date -Is)" "${prior_clean}" >"${resume_root}/finalizer-status.txt"
+        exit 1
+      fi
+      prior_snapshot="${snapshot_dir}/prior-clean${clean_index}-shard${shard}.sqlite"
+      sqlite3 "${prior_clean}" ".backup '${prior_snapshot}'"
+      prior_databases+=("${prior_snapshot}")
+    done
   done
 fi
 sha256sum "${snapshot_dir}"/*.sqlite >"${snapshot_dir}/SHA256SUMS"
