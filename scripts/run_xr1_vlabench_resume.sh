@@ -75,9 +75,13 @@ mkdir -p "${HF_MODULES_CACHE}" "${TORCH_EXTENSIONS_DIR}" "${TORCHINDUCTOR_CACHE_
 server_pids=()
 client_pids=()
 monitor_pid=
+watchdog_pid=
 cleanup() {
   if [[ -n "${monitor_pid}" ]]; then
     kill "${monitor_pid}" 2>/dev/null || true
+  fi
+  if [[ -n "${watchdog_pid}" ]]; then
+    kill "${watchdog_pid}" 2>/dev/null || true
   fi
   for pid in "${client_pids[@]}"; do
     kill "${pid}" 2>/dev/null || true
@@ -165,15 +169,87 @@ snapshot_recordings() {
 ) >"${run_root}/snapshot.log" 2>&1 &
 monitor_pid=$!
 
+# The harness isolates episode errors by design, so a dead model server would
+# otherwise let its client record errors for every remaining identity. Require
+# three consecutive failed health passes before stopping the whole supervisor;
+# the cleanup trap closes every client/server and the external checkpoint
+# monitor then snapshots the closed databases for exact continuation.
+supervisor_pid=${BASHPID}
+(
+  consecutive_failures=0
+  while :; do
+    any_client_alive=0
+    for pid in "${client_pids[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        any_client_alive=1
+      fi
+    done
+    [[ "${any_client_alive}" -eq 1 ]] || exit 0
+
+    healthy=1
+    for shard in $(seq 0 $((shard_count - 1))); do
+      port=$((base_port + shard))
+      if ! kill -0 "${server_pids[shard]}" 2>/dev/null \
+        || ! curl --max-time 5 -fsS "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+        healthy=0
+      fi
+    done
+    if [[ "${healthy}" -eq 1 ]]; then
+      consecutive_failures=0
+    else
+      consecutive_failures=$((consecutive_failures + 1))
+      printf '%s unhealthy_pass=%s/3\n' \
+        "$(date -Is)" "${consecutive_failures}" >"${run_root}/watchdog-status.txt"
+    fi
+    if [[ "${consecutive_failures}" -ge 3 ]]; then
+      printf '%s fatal: model-server health failed three consecutive passes\n' \
+        "$(date -Is)" >"${run_root}/watchdog-status.txt"
+      kill -TERM "${supervisor_pid}"
+      exit 1
+    fi
+    sleep 30
+  done
+) >"${run_root}/watchdog.log" 2>&1 &
+watchdog_pid=$!
+
 exit_code=0
-for pid in "${client_pids[@]}"; do
-  if ! wait "${pid}"; then
+remaining_pids=("${client_pids[@]}")
+while [[ "${#remaining_pids[@]}" -gt 0 ]]; do
+  finished_pid=
+  client_rc=0
+  wait -n -p finished_pid "${remaining_pids[@]}" || client_rc=$?
+  if [[ -z "${finished_pid}" ]]; then
     exit_code=1
+    printf '%s wait -n returned without a finished client PID\n' \
+      "$(date -Is)" >"${run_root}/client-failure.txt"
+    break
+  fi
+  next_pids=()
+  for pid in "${remaining_pids[@]}"; do
+    if [[ "${pid}" != "${finished_pid}" ]]; then
+      next_pids+=("${pid}")
+    fi
+  done
+  remaining_pids=("${next_pids[@]}")
+  if [[ "${client_rc}" -ne 0 ]]; then
+    exit_code=1
+    printf '%s client_pid=%s exit_code=%s; stopping remaining shards\n' \
+      "$(date -Is)" "${finished_pid}" "${client_rc}" >"${run_root}/client-failure.txt"
+    for pid in "${remaining_pids[@]}"; do
+      kill "${pid}" 2>/dev/null || true
+    done
+    for pid in "${remaining_pids[@]}"; do
+      wait "${pid}" 2>/dev/null || true
+    done
+    break
   fi
 done
 kill "${monitor_pid}" 2>/dev/null || true
 wait "${monitor_pid}" 2>/dev/null || true
 monitor_pid=
+kill "${watchdog_pid}" 2>/dev/null || true
+wait "${watchdog_pid}" 2>/dev/null || true
+watchdog_pid=
 snapshot_recordings
 
 printf 'eval_id=%s\nexit_code=%s\n' "${eval_id}" "${exit_code}" >"${run_root}/runner-summary.txt"

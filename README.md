@@ -149,6 +149,10 @@ Active XR-1 TODOs, in execution order:
   any supplied completed manifest against all pinned track identities before
   model startup and requires fresh run/result roots, allowing a checkpoint to
   resume only its missing episodes without editing the benchmark config.
+- [x] Make continuation supervisors fail fast: detect any client exit with
+  `wait -n`, require three consecutive model-server health failures before
+  interruption, stop sibling shards through the cleanup trap, and let the
+  recovery monitor snapshot the resulting closed databases.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
