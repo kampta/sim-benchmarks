@@ -192,6 +192,10 @@ Active XR-1 TODOs, in execution order:
   identities: validate 2,459 synthetic scored episodes plus one preserved raw
   simulator error, available-case and zero-imputed task macros, all full-suite
   and per-track comparison rows, SQLite integrity, and artifact checksums.
+- [x] Execute the complete distributed finalizer against a disposable 2,460-
+  identity layout with four original and eight resumed shards, proving shard
+  discovery, immutable backups, recovery cleaning, exact coverage, task-macro
+  reporting, comparison output, and final checksum/postcondition gates.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
