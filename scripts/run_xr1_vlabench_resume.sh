@@ -15,7 +15,7 @@ shard_offset=${XR1_SHARD_OFFSET:-0}
 server_count=${XR1_SERVER_COUNT:-${local_shard_count}}
 base_port=${XR1_BASE_PORT:-18000}
 eval_prefix=${XR1_EVAL_PREFIX:-xr1-full-resume}
-eval_id="${eval_prefix}-$(date -u +%Y%m%dT%H%M%SZ)"
+eval_id=${XR1_EVAL_ID:-${eval_prefix}-$(date -u +%Y%m%dT%H%M%SZ)}
 
 mkdir -p "${run_root}/server_logs" "${run_root}/shards" "${run_root}/snapshots" "${result_root}"
 cd "${repo_root}"
