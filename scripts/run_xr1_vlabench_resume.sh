@@ -9,13 +9,25 @@ manifest=${XR1_COMPLETED_MANIFEST:-/data/shared2/user/kampta/logs/sim_benchmarks
 run_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813}
 result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
 track_dir=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/provenance/tracks
-shard_count=4
+shard_count=${XR1_SHARD_COUNT:-4}
+server_count=${XR1_SERVER_COUNT:-${shard_count}}
 base_port=${XR1_BASE_PORT:-18000}
 eval_prefix=${XR1_EVAL_PREFIX:-xr1-full-resume}
 eval_id="${eval_prefix}-$(date -u +%Y%m%dT%H%M%SZ)"
 
 mkdir -p "${run_root}/server_logs" "${run_root}/shards" "${run_root}/snapshots" "${result_root}"
 cd "${repo_root}"
+
+if ! [[ "${shard_count}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "XR1_SHARD_COUNT must be a positive integer" >&2
+  exit 2
+fi
+if ! [[ "${server_count}" =~ ^[1-9][0-9]*$ ]] || [[ "${server_count}" -gt "${shard_count}" ]]; then
+  echo "XR1_SERVER_COUNT must be a positive integer no greater than XR1_SHARD_COUNT" >&2
+  exit 2
+fi
+printf 'shards=%s\nservers=%s\nbase_port=%s\n' \
+  "${shard_count}" "${server_count}" "${base_port}" >"${run_root}/topology.txt"
 
 exec 9>"${run_root}/runner.lock"
 if ! flock -n 9; then
@@ -93,12 +105,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-for shard in $(seq 0 $((shard_count - 1))); do
-  port=$((base_port + shard))
+for server in $(seq 0 $((server_count - 1))); do
+  port=$((base_port + server))
   "${xr1_python}" src/sim_benchmarks/model_servers/xiaomi_robotics_1.py \
     --config configs/model_servers/xiaomi_robotics_1/vlabench_gb10.yaml \
     --port "${port}" \
-    >"${run_root}/server_logs/server${shard}.log" 2>&1 &
+    >"${run_root}/server_logs/server${server}.log" 2>&1 &
   server_pids+=("$!")
   ready=0
   for _ in $(seq 1 120); do
@@ -107,19 +119,19 @@ for shard in $(seq 0 $((shard_count - 1))); do
       break
     fi
     if ! kill -0 "${server_pids[-1]}" 2>/dev/null; then
-      echo "XR-1 server ${shard} exited during startup; see server log" >&2
+      echo "XR-1 server ${server} exited during startup; see server log" >&2
       exit 1
     fi
     sleep 5
   done
   if [[ "${ready}" -ne 1 ]]; then
-    echo "XR-1 server ${shard} did not become ready" >&2
+    echo "XR-1 server ${server} did not become ready" >&2
     exit 1
   fi
 done
 
 for shard in $(seq 0 $((shard_count - 1))); do
-  port=$((base_port + shard))
+  port=$((base_port + (shard % server_count)))
   shard_result="${result_root}/shard${shard}"
   mkdir -p "${shard_result}"
   "${vla_eval}" run \
@@ -187,9 +199,9 @@ supervisor_pid=${BASHPID}
     [[ "${any_client_alive}" -eq 1 ]] || exit 0
 
     healthy=1
-    for shard in $(seq 0 $((shard_count - 1))); do
-      port=$((base_port + shard))
-      if ! kill -0 "${server_pids[shard]}" 2>/dev/null \
+    for server in $(seq 0 $((server_count - 1))); do
+      port=$((base_port + server))
+      if ! kill -0 "${server_pids[server]}" 2>/dev/null \
         || ! curl --max-time 5 -fsS "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
         healthy=0
       fi
