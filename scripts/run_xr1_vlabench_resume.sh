@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=/data/shared2/user/kampta/code/sim_benchmarks/.slide-worktrees/sim_benchmarks
+repo_root=${XR1_REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}
 xr1_python=/data/shared1/envs/xr1/bin/python
 vla_eval="${repo_root}/.venv/bin/vla-eval"
 benchmark_config=configs/benchmarks/vlabench/xr1_official_resume.yaml
