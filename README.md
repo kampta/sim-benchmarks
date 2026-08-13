@@ -134,7 +134,7 @@ Active XR-1 TODOs, in execution order:
   resume filtering keyed by `(track, task, episode index, config SHA-256)` so
   no completed rollout is repeated or confused with an identical config in a
   different track.
-- [x] Resume the remaining 2,405 episodes across four isolated model servers
+- [x] Start the remaining 2,405 episodes across four isolated model servers
   and four five-core simulator shards, with periodic SQLite backups and a
   finalizer that preserves simulator errors, retries only their exact pinned
   identities up to three times, and publishes only after exact 2,460-identity
@@ -143,8 +143,8 @@ Active XR-1 TODOs, in execution order:
   snapshot every live SQLite database, retain raw simulator errors, validate
   derived scored copies, and emit the exact completed-identity manifest needed
   to continue only the missing episodes. A detached monitor creates and
-  verifies these checkpoints every six hours and once more when the runner
-  exits.
+  verifies these checkpoints every six hours by default and once more when the
+  runner exits. The active long run uses an hourly interval.
 - [x] Parameterize the four-shard runner for crash continuation. It validates
   any supplied completed manifest against all pinned track identities before
   model startup and requires fresh run/result roots, allowing a checkpoint to
@@ -165,6 +165,22 @@ Active XR-1 TODOs, in execution order:
   and include a conservative zero-imputed sensitivity result. This was needed
   after one pinned `select_book` identity reproduced `mjWARN_BADQACC` at the
   same step in two independent generations with fixed request seed 42.
+- [x] Measure protocol-equivalent serving topologies on GB10 instead of assuming
+  replica scaling. Four replicas/four simulators averaged 5.18 seconds per
+  simulator step; two replicas/four simulators averaged 5.14 seconds per step
+  with half the model memory; one serialized replica/four simulators was slower
+  and produced sustained request backpressure. Continue with two replicas.
+- [x] Validate the accumulated multi-generation union independently of its
+  continuation manifests: the original 55 identities exactly match their four
+  recording databases, and 12 clean continuation databases add 74 unique valid
+  identities for 129 total, with no duplicates or unexpected config hashes.
+  Preserve the audit and source checksums with the run artifacts.
+- [x] Prepare Spark2 for an exact distributed continuation: synchronize the
+  pinned code, mamba runtime, track files, checkpoint, and byte-identical
+  VLABench image; add global shard offsets and distributed finalization; and
+  install a fail-closed cutover that waits for the existing Spark2 workload to
+  disappear and memory to recover before checkpointing Spark1 and launching
+  non-overlapping shards 0–3 and 4–7.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
