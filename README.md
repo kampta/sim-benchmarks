@@ -145,6 +145,10 @@ Active XR-1 TODOs, in execution order:
   to continue only the missing episodes. A detached monitor creates and
   verifies these checkpoints every six hours and once more when the runner
   exits.
+- [x] Parameterize the four-shard runner for crash continuation. It validates
+  any supplied completed manifest against all pinned track identities before
+  model startup and requires fresh run/result roots, allowing a checkpoint to
+  resume only its missing episodes without editing the benchmark config.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.

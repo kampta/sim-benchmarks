@@ -9,7 +9,7 @@ docker:
   gpus: "all"
   volumes:
     - "/data/shared2/user/kampta/code/sim_benchmarks/.slide-worktrees/sim_benchmarks/src/sim_benchmarks:/opt/venv/lib/python3.10/site-packages/sim_benchmarks:ro"
-    - "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/resume/completed-55.json:/workspace/resume/completed.json:ro"
+    - "${oc.env:XR1_COMPLETED_MANIFEST,/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/resume/completed-55.json}:/workspace/resume/completed.json:ro"
   env:
     - "MUJOCO_EGL_DEVICE_ID=0"
 

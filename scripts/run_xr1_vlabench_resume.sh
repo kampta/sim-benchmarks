@@ -5,11 +5,14 @@ repo_root=/data/shared2/user/kampta/code/sim_benchmarks/.slide-worktrees/sim_ben
 xr1_python=/data/shared1/envs/xr1/bin/python
 vla_eval="${repo_root}/.venv/bin/vla-eval"
 benchmark_config=configs/benchmarks/vlabench/xr1_official_resume.yaml
-manifest=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/resume/completed-55.json
-run_root=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813
-result_root=/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813
+manifest=${XR1_COMPLETED_MANIFEST:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/resume/completed-55.json}
+run_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813}
+result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
+track_dir=/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812/provenance/tracks
 shard_count=4
-eval_id="xr1-full-resume-$(date -u +%Y%m%dT%H%M%SZ)"
+base_port=${XR1_BASE_PORT:-18000}
+eval_prefix=${XR1_EVAL_PREFIX:-xr1-full-resume}
+eval_id="${eval_prefix}-$(date -u +%Y%m%dT%H%M%SZ)"
 
 mkdir -p "${run_root}/server_logs" "${run_root}/shards" "${run_root}/snapshots" "${result_root}"
 cd "${repo_root}"
@@ -24,12 +27,36 @@ if find "${result_root}" -name 'recording-*.sqlite' -print -quit | grep -q .; th
   exit 1
 fi
 
-manifest_count=$("${repo_root}/.venv/bin/python" -c \
-  'import json,sys; print(json.load(open(sys.argv[1]))["completed_episode_count"])' "${manifest}")
-if [[ "${manifest_count}" -ne 55 ]]; then
-  echo "expected a 55-episode resume manifest, found ${manifest_count}" >&2
-  exit 1
-fi
+manifest_count=$(PYTHONPATH="${repo_root}/src" "${repo_root}/.venv/bin/python" - "${manifest}" "${track_dir}" <<'PY'
+import sys
+from pathlib import Path
+
+from sim_benchmarks.benchmarks.vlabench_xr1 import (
+    OFFICIAL_TRACKS,
+    load_completed_episode_identities,
+    load_vlabench_episode_tasks,
+    task_episode_identity,
+)
+
+manifest = Path(sys.argv[1]).resolve()
+track_dir = Path(sys.argv[2]).resolve()
+completed = load_completed_episode_identities(manifest)
+expected = {
+    task_episode_identity(task)
+    for suite in OFFICIAL_TRACKS
+    for task in load_vlabench_episode_tasks(track_dir / f"{suite}.json", suite=suite, episode_limit=50)
+}
+unexpected = sorted(completed - expected)
+if unexpected:
+    raise ValueError(f"resume manifest contains identities absent from pinned tracks: {unexpected[:3]}")
+if len(completed) >= len(expected):
+    raise ValueError(f"resume manifest leaves no work: completed={len(completed)} official={len(expected)}")
+print(len(completed))
+PY
+)
+export XR1_COMPLETED_MANIFEST="$(realpath "${manifest}")"
+printf 'validated completed manifest identities=%s pending=%s\n' \
+  "${manifest_count}" "$((2460 - manifest_count))" >"${run_root}/resume-validation.txt"
 printf '%s\n' "${eval_id}" >"${run_root}/eval_id.txt"
 
 export HF_HOME=/data/shared1/cache/huggingface
@@ -63,7 +90,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 for shard in $(seq 0 $((shard_count - 1))); do
-  port=$((18000 + shard))
+  port=$((base_port + shard))
   "${xr1_python}" src/sim_benchmarks/model_servers/xiaomi_robotics_1.py \
     --config configs/model_servers/xiaomi_robotics_1/vlabench_gb10.yaml \
     --port "${port}" \
@@ -88,7 +115,7 @@ for shard in $(seq 0 $((shard_count - 1))); do
 done
 
 for shard in $(seq 0 $((shard_count - 1))); do
-  port=$((18000 + shard))
+  port=$((base_port + shard))
   shard_result="${result_root}/shard${shard}"
   mkdir -p "${shard_result}"
   "${vla_eval}" run \
