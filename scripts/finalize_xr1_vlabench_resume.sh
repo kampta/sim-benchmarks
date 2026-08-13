@@ -8,6 +8,7 @@ result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_r
 base_completed_manifest=${XR1_COMPLETED_MANIFEST:-${original_root}/resume/completed-55.json}
 prior_clean_dirs=${XR1_PRIOR_CLEAN_DIRS:-${XR1_PRIOR_CLEAN_DIR:-}}
 session_name=${XR1_SESSION_NAME:-xr1_resume}
+shard_count=${XR1_SHARD_COUNT:-4}
 base_port=${XR1_BASE_PORT:-18000}
 retry_result_root=${XR1_RETRY_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/$(basename "${resume_root}")_retry}
 final_root="${resume_root}/final"
@@ -52,7 +53,7 @@ snapshot_dir="${final_root}/recordings"
 mkdir -p "${snapshot_dir}"
 prior_databases=()
 resume_databases=()
-for shard in 0 1 2 3; do
+for shard in $(seq 0 $((shard_count - 1))); do
   original="${original_root}/shard${shard}/recording-xr1-full-flash-20260812.sqlite"
   resumed="${result_root}/shard${shard}/recording-${eval_id}.sqlite"
   if [[ ! -f "${original}" || ! -f "${resumed}" ]]; then
@@ -130,7 +131,7 @@ retry_count=$("${python_bin}" -c \
   'import json,sys; print(json.load(open(sys.argv[1]))["retry_identities"])' \
   "${recovery_dir}/preparation.json")
 scored_resume_databases=()
-for shard in 0 1 2 3; do
+for shard in $(seq 0 $((shard_count - 1))); do
   scored_resume_databases+=("${recovery_dir}/clean/shard${shard}.sqlite")
 done
 retry_databases=()
