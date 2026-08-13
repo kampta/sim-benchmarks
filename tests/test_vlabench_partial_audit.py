@@ -17,6 +17,13 @@ _AUDIT_MODULE = importlib.util.module_from_spec(_AUDIT_SPEC)
 _AUDIT_SPEC.loader.exec_module(_AUDIT_MODULE)
 audit_partial = _AUDIT_MODULE.audit_partial
 
+_CHECKPOINT_PATH = Path(__file__).parents[1] / "scripts" / "checkpoint_vlabench_progress.py"
+_CHECKPOINT_SPEC = importlib.util.spec_from_file_location("checkpoint_vlabench_progress", _CHECKPOINT_PATH)
+assert _CHECKPOINT_SPEC is not None and _CHECKPOINT_SPEC.loader is not None
+_CHECKPOINT_MODULE = importlib.util.module_from_spec(_CHECKPOINT_SPEC)
+_CHECKPOINT_SPEC.loader.exec_module(_CHECKPOINT_MODULE)
+checkpoint_progress = _CHECKPOINT_MODULE.checkpoint_progress
+
 
 def _digest(config: dict[str, int]) -> str:
     return hashlib.sha256(json.dumps(config, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -140,3 +147,47 @@ def test_partial_audit_rejects_noncontiguous_valid_steps(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="contiguous step rows"):
         audit_partial([database], track_dir=track_dir, base_completed_manifest=manifest)
+
+
+def test_recovery_checkpoint_preserves_raw_errors_and_emits_exact_resume_manifest(tmp_path: Path) -> None:
+    database, track_dir, manifest = _make_fixture(tmp_path)
+    output_dir = tmp_path / "checkpoint"
+
+    progress = checkpoint_progress(
+        [database],
+        track_dir=track_dir,
+        base_completed_manifest=manifest,
+        output_dir=output_dir,
+    )
+
+    assert progress["status"] == "valid_partial"
+    assert progress["official_identities"] == 5
+    assert progress["base_completed_identities"] == 3
+    assert progress["valid_checkpoint_identities"] == 1
+    assert progress["completed_identities"] == 4
+    assert progress["pending_identities"] == 1
+    assert progress["failed_attempt_rows"] == 1
+
+    completed = json.loads((output_dir / "completed-manifest.json").read_text())
+    assert completed["completed_episode_count"] == 4
+    assert len(completed["completed_episodes"]) == 4
+    failures = json.loads((output_dir / "failed-attempts.json").read_text())
+    assert failures[0]["failure_reason"] == "exception"
+
+    raw = sqlite3.connect(output_dir / "raw" / "shard0.sqlite")
+    clean = sqlite3.connect(output_dir / "clean" / "shard0.sqlite")
+    original = sqlite3.connect(database)
+    try:
+        assert raw.execute("SELECT COUNT(*) FROM episode_results").fetchone()[0] == 2
+        assert raw.execute("SELECT COUNT(*) FROM step_rows").fetchone()[0] == 3
+        assert clean.execute("SELECT COUNT(*) FROM episode_results").fetchone()[0] == 1
+        assert clean.execute("SELECT COUNT(*) FROM step_rows").fetchone()[0] == 2
+        assert original.execute("SELECT COUNT(*) FROM episode_results").fetchone()[0] == 2
+        assert original.execute("SELECT COUNT(*) FROM step_rows").fetchone()[0] == 3
+    finally:
+        raw.close()
+        clean.close()
+        original.close()
+
+    checksum_lines = (output_dir / "SHA256SUMS").read_text().splitlines()
+    assert any(line.endswith("  completed-manifest.json") for line in checksum_lines)

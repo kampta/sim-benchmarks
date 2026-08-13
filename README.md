@@ -139,6 +139,10 @@ Active XR-1 TODOs, in execution order:
   finalizer that preserves simulator errors, retries only their exact pinned
   identities up to three times, and publishes only after exact 2,460-identity
   coverage passes.
+- [x] Add read-only recovery checkpoints for an interrupted multi-day run:
+  snapshot every live SQLite database, retain raw simulator errors, validate
+  derived scored copies, and emit the exact completed-identity manifest needed
+  to continue only the missing episodes.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
