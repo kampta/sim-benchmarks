@@ -57,6 +57,12 @@ if ssh "${remote_host}" "tmux has-session -t '${session_name}' 2>/dev/null"; the
   echo "remote tmux session ${session_name} already exists; refusing cutover" >&2
   exit 1
 fi
+for remote_monitor_session in xr1_audit xr1_checkpoint xr1_finalize; do
+  if ssh "${remote_host}" "tmux has-session -t '${remote_monitor_session}' 2>/dev/null"; then
+    echo "remote tmux session ${remote_monitor_session} already exists; refusing cutover" >&2
+    exit 1
+  fi
+done
 if [[ ! -f "${current_run_root}/eval_id.txt" || ! -f "${current_base_manifest}" ]]; then
   echo "current evaluation metadata or base manifest is missing" >&2
   exit 1
@@ -189,6 +195,8 @@ for prior_clean_dir in "${prior_clean_dir_array[@]}"; do
 done
 printf '%s\n' "${checkpoint_dir}/clean" >>"${prior_clean_file}.next"
 mv -f "${prior_clean_file}.next" "${prior_clean_file}"
+printf '8\n' >"${new_run_root}/base/shard-count.txt"
+printf '%s\n' "${remote_host}" >"${new_run_root}/base/remote-host.txt"
 freeze_provenance "${new_run_root}"
 ssh "${remote_host}" "mkdir -p '${new_run_root}/base' '${new_result_root}'"
 rsync -a --checksum "${new_run_root}/base/" "${remote_host}:${new_run_root}/base/"
@@ -223,11 +231,11 @@ if [[ "${database_count}" -ne 8 ]]; then
 fi
 
 tmux new-session -d -s xr1_audit \
-  "cd '${repo_root}' && env ${common_env} XR1_SHARD_OFFSET=0 XR1_SESSION_NAME=${session_name} bash scripts/monitor_xr1_vlabench_partial.sh >'${new_run_root}/partial-audit-monitor.log' 2>&1"
+  "cd '${repo_root}' && env ${common_env} XR1_LOCAL_SHARD_COUNT=8 XR1_SHARD_OFFSET=0 XR1_REMOTE_HOST='${remote_host}' XR1_SESSION_NAME=${session_name} bash scripts/monitor_xr1_vlabench_partial.sh >'${new_run_root}/partial-audit-monitor.log' 2>&1"
 tmux new-session -d -s xr1_checkpoint \
-  "cd '${repo_root}' && env ${common_env} XR1_SHARD_OFFSET=0 XR1_SESSION_NAME=${session_name} bash scripts/monitor_xr1_recovery_checkpoints.sh >>'${new_run_root}/recovery-checkpoint-monitor.log' 2>&1"
-ssh "${remote_host}" "tmux new-session -d -s xr1_audit \"cd '${remote_repo_root}' && env ${common_env} XR1_SHARD_OFFSET=4 XR1_SESSION_NAME=${session_name} bash scripts/monitor_xr1_vlabench_partial.sh >'${new_run_root}/partial-audit-monitor.log' 2>&1\""
-ssh "${remote_host}" "tmux new-session -d -s xr1_checkpoint \"cd '${remote_repo_root}' && env ${common_env} XR1_SHARD_OFFSET=4 XR1_SESSION_NAME=${session_name} bash scripts/monitor_xr1_recovery_checkpoints.sh >>'${new_run_root}/recovery-checkpoint-monitor.log' 2>&1\""
+  "cd '${repo_root}' && env ${common_env} XR1_LOCAL_SHARD_COUNT=8 XR1_SHARD_OFFSET=0 XR1_REMOTE_HOST='${remote_host}' XR1_SESSION_NAME=${session_name} bash scripts/monitor_xr1_recovery_checkpoints.sh >>'${new_run_root}/recovery-checkpoint-monitor.log' 2>&1"
+tmux new-session -d -s xr1_finalize \
+  "cd '${repo_root}' && env ${common_env} XR1_REPO_ROOT='${repo_root}' XR1_REMOTE_HOST='${remote_host}' XR1_SESSION_NAME=${session_name} bash '${new_run_root}/provenance/scripts/finalize_xr1_vlabench_resume.sh' >'${new_run_root}/finalizer.log' 2>&1"
 
 printf '%s distributed_started base_valid=%s result_root=%s\n' \
   "$(date -Is)" "${completed_count}" "${new_result_root}" >"${cutover_root}/status.txt"

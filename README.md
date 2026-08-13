@@ -90,7 +90,7 @@ below are upstream reference targets, not our measurements:
 
 | Benchmark | Xiaomi-published reference | Reproduced here | Current state |
 |---|---:|---:|---|
-| VLABench | 59.1% headline SR | — | Full pinned run active: 101 exact identities are checksum-preserved and the remaining 2,359 are running in a fresh four-shard continuation. |
+| VLABench | 59.1% headline SR | — | Full pinned run active: 139 exact identities are checksum-preserved and 2,321 remain in the current four-shard continuation. |
 | RoboCasa | 74.5% headline; detailed evaluation guide reports 74.2% over 24 × 100 episodes | — | Pinned harness adapter must be audited against RoboCasa v0.2. |
 | RoboCasa365 | 57.4% headline; detailed guide reports 1,432/2,500 = 57.28% | — | Adapter must be reviewed/backported and the `target50` protocol frozen. |
 | RoboDojo | 13.93% headline | — | No XR-1 checkpoint is published; no adapter is present in pinned v0.4.0. |
@@ -172,8 +172,8 @@ Active XR-1 TODOs, in execution order:
   and produced sustained request backpressure. Continue with two replicas.
 - [x] Validate the accumulated multi-generation union independently of its
   continuation manifests: the original 55 identities exactly match their four
-  recording databases, and 12 clean continuation databases add 74 unique valid
-  identities for 129 total, with no duplicates or unexpected config hashes.
+  recording databases, and 12 clean continuation databases add 84 unique valid
+  identities for 139 total, with no duplicates or unexpected config hashes.
   Preserve the audit and source checksums with the run artifacts.
 - [x] Prepare Spark2 for an exact distributed continuation: synchronize the
   pinned code, mamba runtime, track files, checkpoint, and byte-identical
@@ -181,6 +181,10 @@ Active XR-1 TODOs, in execution order:
   install a fail-closed cutover that waits for the existing Spark2 workload to
   disappear and memory to recover before checkpointing Spark1 and launching
   non-overlapping shards 0–3 and 4–7.
+- [x] Make dual-host recovery and finalization generation-aware: snapshot the
+  four-shard original/prior generations separately from an eight-shard resumed
+  generation, audit and checkpoint all shared recordings on Spark1, wait for
+  both runner sessions, and automatically run the exact-coverage finalizer.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.

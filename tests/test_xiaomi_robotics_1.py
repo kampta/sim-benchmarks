@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -231,9 +232,7 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             root = Path(directory)
             track_dir = root / "configs" / "evaluation" / "tracks"
             track_dir.mkdir(parents=True)
-            (track_dir / f"{track}.json").write_text(
-                json.dumps({"select_fruit": [config]}), encoding="utf-8"
-            )
+            (track_dir / f"{track}.json").write_text(json.dumps({"select_fruit": [config]}), encoding="utf-8")
             manifest = root / "completed.json"
             manifest.write_text(
                 json.dumps(
@@ -294,9 +293,7 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
 
             track_dir = root / "configs" / "evaluation" / "tracks"
             track_dir.mkdir(parents=True)
-            (track_dir / f"{track}.json").write_text(
-                json.dumps({"select_fruit": [{"seed": 1}]}), encoding="utf-8"
-            )
+            (track_dir / f"{track}.json").write_text(json.dumps({"select_fruit": [{"seed": 1}]}), encoding="utf-8")
             manifest.write_text(
                 json.dumps({"schema_version": 1, "completed_episodes": [entry]}),
                 encoding="utf-8",
@@ -475,8 +472,7 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
                     "macro": {"success": 0.5, "intention_score": 0.6, "progress_score": 0.7},
                     "num_episodes": sum(OFFICIAL_EXPECTED_EPISODES[track].values()),
                     "tasks": {
-                        task: {"num_episodes": count}
-                        for task, count in OFFICIAL_EXPECTED_EPISODES[track].items()
+                        task: {"num_episodes": count} for task, count in OFFICIAL_EXPECTED_EPISODES[track].items()
                     },
                 }
                 for track in OFFICIAL_EXPECTED_EPISODES
@@ -658,12 +654,8 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             identities = []
             for index, track in enumerate(tracks):
                 config = {"seed": index}
-                (track_dir / f"{track}.json").write_text(
-                    json.dumps({"select_fruit": [config]}), encoding="utf-8"
-                )
-                digest = hashlib.sha256(
-                    json.dumps(config, sort_keys=True, separators=(",", ":")).encode()
-                ).hexdigest()
+                (track_dir / f"{track}.json").write_text(json.dumps({"select_fruit": [config]}), encoding="utf-8")
+                digest = hashlib.sha256(json.dumps(config, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
                 identities.append((track, digest))
                 if index < len(tracks) - 1:
                     results.append(
@@ -672,9 +664,7 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
                             "tasks": [
                                 {
                                     "task": "select_fruit",
-                                    "episodes": [
-                                        {"episode_index": 0, "episode_config_sha256": digest}
-                                    ],
+                                    "episodes": [{"episode_index": 0, "episode_config_sha256": digest}],
                                 }
                             ],
                         }
@@ -765,6 +755,42 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
         self.assertEqual(adjusted["num_episodes_total"], 6)
         self.assertEqual(adjusted["tracks"]["track_1_in_distribution"]["macro"]["success"], 0.25)
         self.assertAlmostEqual(adjusted["overall"]["success"], 0.45)
+
+    def test_distributed_finalizer_preserves_generation_layout_and_waits_for_remote(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        scripts = {
+            name: (repo_root / "scripts" / name).read_text(encoding="utf-8")
+            for name in (
+                "cutover_xr1_vlabench_dual_spark.sh",
+                "finalize_xr1_vlabench_resume.sh",
+                "monitor_xr1_recovery_checkpoints.sh",
+                "monitor_xr1_vlabench_partial.sh",
+            )
+        }
+        subprocess.run(
+            ["bash", "-n", *(str(repo_root / "scripts" / name) for name in scripts)],
+            check=True,
+        )
+
+        finalizer = scripts["finalize_xr1_vlabench_resume.sh"]
+        self.assertIn("seq 0 $((original_shard_count - 1))", finalizer)
+        self.assertIn("seq 0 $((shard_count - 1))", finalizer)
+        self.assertIn("base/shard-count.txt", finalizer)
+        self.assertIn("base/remote-host.txt", finalizer)
+        self.assertIn("remote_state=ssh_error", finalizer)
+
+        cutover = scripts["cutover_xr1_vlabench_dual_spark.sh"]
+        self.assertIn("XR1_LOCAL_SHARD_COUNT=8 XR1_SHARD_OFFSET=0", cutover)
+        self.assertIn("tmux new-session -d -s xr1_finalize", cutover)
+        self.assertNotIn('ssh "${remote_host}" "tmux new-session -d -s xr1_audit', cutover)
+        self.assertNotIn('ssh "${remote_host}" "tmux new-session -d -s xr1_checkpoint', cutover)
+
+        for name in (
+            "monitor_xr1_recovery_checkpoints.sh",
+            "monitor_xr1_vlabench_partial.sh",
+        ):
+            self.assertIn("runner_active()", scripts[name])
+            self.assertIn("base/remote-host.txt", scripts[name])
 
 
 if __name__ == "__main__":

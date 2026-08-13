@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=/data/shared2/user/kampta/code/sim_benchmarks/.slide-worktrees/sim_benchmarks
+repo_root=${XR1_REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}
 original_root=${XR1_ORIGINAL_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official_flash_20260812}
 resume_root=${XR1_RUN_ROOT:-/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_resume_20260813}
 result_root=${XR1_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/xr1_resume_20260813}
 base_completed_manifest=${XR1_COMPLETED_MANIFEST:-${original_root}/resume/completed-55.json}
 prior_clean_dirs=${XR1_PRIOR_CLEAN_DIRS:-${XR1_PRIOR_CLEAN_DIR:-}}
 session_name=${XR1_SESSION_NAME:-xr1_resume}
-shard_count=${XR1_SHARD_COUNT:-4}
+shard_count=${XR1_SHARD_COUNT:-}
+original_shard_count=${XR1_ORIGINAL_SHARD_COUNT:-4}
+prior_shard_count=${XR1_PRIOR_SHARD_COUNT:-4}
+remote_host=${XR1_REMOTE_HOST:-}
 base_port=${XR1_BASE_PORT:-18000}
 retry_result_root=${XR1_RETRY_RESULT_ROOT:-/data/shared1/cache/sim_benchmarks/vlabench/$(basename "${resume_root}")_retry}
 final_root="${resume_root}/final"
@@ -21,6 +24,21 @@ retry_server_pid=
 if [[ -z "${prior_clean_dirs}" && -f "${resume_root}/base/prior-clean-dirs.txt" ]]; then
   prior_clean_dirs=$(paste -sd: "${resume_root}/base/prior-clean-dirs.txt")
 fi
+if [[ -z "${shard_count}" && -f "${resume_root}/base/shard-count.txt" ]]; then
+  shard_count=$(<"${resume_root}/base/shard-count.txt")
+fi
+shard_count=${shard_count:-4}
+if [[ -z "${remote_host}" && -f "${resume_root}/base/remote-host.txt" ]]; then
+  remote_host=$(<"${resume_root}/base/remote-host.txt")
+fi
+
+for value_name in shard_count original_shard_count prior_shard_count; do
+  value=${!value_name}
+  if [[ ! "${value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "${value_name} must be a positive integer, found ${value@Q}" >&2
+    exit 1
+  fi
+done
 
 cleanup() {
   if [[ -n "${retry_server_pid}" ]]; then
@@ -32,11 +50,38 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "${final_root}"
 
-# The runner owns the live SQLite databases. Wait for it to exit before making
-# the immutable final snapshots. A crash is handled by the same coverage gate.
-while tmux has-session -t "${session_name}" 2>/dev/null; do
-  date -Is >"${resume_root}/finalizer-status.txt"
-  printf 'waiting for xr1_resume\n' >>"${resume_root}/finalizer-status.txt"
+# The runners own the live SQLite databases. Wait for every host to exit before
+# making immutable snapshots. Treat an SSH failure as unknown/running rather
+# than accidentally finalizing a still-open remote database.
+while true; do
+  local_active=0
+  remote_active=0
+  remote_state=not_configured
+  if tmux has-session -t "${session_name}" 2>/dev/null; then
+    local_active=1
+  fi
+  if [[ -n "${remote_host}" ]]; then
+    if ! remote_state=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${remote_host}" \
+      "if tmux has-session -t '${session_name}' 2>/dev/null; then printf active; else printf inactive; fi"); then
+      printf '%s waiting local_active=%s remote_host=%s remote_state=ssh_error\n' \
+        "$(date -Is)" "${local_active}" "${remote_host}" >"${resume_root}/finalizer-status.txt"
+      sleep 300
+      continue
+    fi
+    if [[ "${remote_state}" == active ]]; then
+      remote_active=1
+    elif [[ "${remote_state}" != inactive ]]; then
+      printf '%s invalid remote runner state host=%s state=%s\n' \
+        "$(date -Is)" "${remote_host}" "${remote_state}" >"${resume_root}/finalizer-status.txt"
+      exit 1
+    fi
+  fi
+  if [[ "${local_active}" -eq 0 && "${remote_active}" -eq 0 ]]; then
+    break
+  fi
+  printf '%s waiting local_active=%s remote_host=%s remote_state=%s\n' \
+    "$(date -Is)" "${local_active}" "${remote_host:-none}" "${remote_state}" \
+    >"${resume_root}/finalizer-status.txt"
   sleep 300
 done
 
@@ -57,26 +102,33 @@ snapshot_dir="${final_root}/recordings"
 mkdir -p "${snapshot_dir}"
 prior_databases=()
 resume_databases=()
-for shard in $(seq 0 $((shard_count - 1))); do
+for shard in $(seq 0 $((original_shard_count - 1))); do
   original="${original_root}/shard${shard}/recording-xr1-full-flash-20260812.sqlite"
-  resumed="${result_root}/shard${shard}/recording-${eval_id}.sqlite"
-  if [[ ! -f "${original}" || ! -f "${resumed}" ]]; then
-    printf '%s missing shard database original=%s resumed=%s\n' \
-      "$(date -Is)" "${original}" "${resumed}" >"${resume_root}/finalizer-status.txt"
+  if [[ ! -f "${original}" ]]; then
+    printf '%s missing original shard database=%s\n' \
+      "$(date -Is)" "${original}" >"${resume_root}/finalizer-status.txt"
     exit 1
   fi
   original_snapshot="${snapshot_dir}/original-shard${shard}.sqlite"
-  resume_snapshot="${snapshot_dir}/resume-shard${shard}.sqlite"
   sqlite3 "${original}" ".backup '${original_snapshot}'"
-  sqlite3 "${resumed}" ".backup '${resume_snapshot}'"
   prior_databases+=("${original_snapshot}")
+done
+for shard in $(seq 0 $((shard_count - 1))); do
+  resumed="${result_root}/shard${shard}/recording-${eval_id}.sqlite"
+  if [[ ! -f "${resumed}" ]]; then
+    printf '%s missing resumed shard database=%s\n' \
+      "$(date -Is)" "${resumed}" >"${resume_root}/finalizer-status.txt"
+    exit 1
+  fi
+  resume_snapshot="${snapshot_dir}/resume-shard${shard}.sqlite"
+  sqlite3 "${resumed}" ".backup '${resume_snapshot}'"
   resume_databases+=("${resume_snapshot}")
 done
 if [[ -n "${prior_clean_dirs}" ]]; then
   IFS=: read -r -a clean_dirs <<<"${prior_clean_dirs}"
   for clean_index in "${!clean_dirs[@]}"; do
     prior_clean_dir=${clean_dirs[clean_index]}
-    for shard in 0 1 2 3; do
+    for shard in $(seq 0 $((prior_shard_count - 1))); do
       prior_clean="${prior_clean_dir}/shard${shard}.sqlite"
       if [[ ! -f "${prior_clean}" ]]; then
         printf '%s missing prior clean database=%s\n' \

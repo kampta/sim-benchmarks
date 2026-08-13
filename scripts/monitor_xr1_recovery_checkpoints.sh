@@ -9,12 +9,32 @@ base_completed_manifest=${XR1_COMPLETED_MANIFEST:-${original_root}/resume/comple
 session_name=${XR1_SESSION_NAME:-xr1_resume}
 local_shard_count=${XR1_LOCAL_SHARD_COUNT:-4}
 shard_offset=${XR1_SHARD_OFFSET:-0}
+remote_host=${XR1_REMOTE_HOST:-}
 checkpoint_root="${resume_root}/recovery-checkpoints"
 monitor_root="${resume_root}/recovery-checkpoint-monitor"
 python_bin="${repo_root}/.venv/bin/python"
 report_src="${resume_root}/provenance/src"
 checkpoint_script="${monitor_root}/checkpoint_vlabench_progress.py"
 interval_seconds=${XR1_CHECKPOINT_INTERVAL_SECONDS:-21600}
+
+if [[ -z "${remote_host}" && -f "${resume_root}/base/remote-host.txt" ]]; then
+  remote_host=$(<"${resume_root}/base/remote-host.txt")
+fi
+
+runner_active() {
+  local remote_state
+  if tmux has-session -t "${session_name}" 2>/dev/null; then
+    return 0
+  fi
+  if [[ -n "${remote_host}" ]]; then
+    if ! remote_state=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${remote_host}" \
+      "if tmux has-session -t '${session_name}' 2>/dev/null; then printf active; else printf inactive; fi"); then
+      return 0
+    fi
+    [[ "${remote_state}" == active ]] && return 0
+  fi
+  return 1
+}
 
 if [[ "${interval_seconds}" -lt 300 ]]; then
   echo "XR1_CHECKPOINT_INTERVAL_SECONDS must be at least 300" >&2
@@ -60,9 +80,9 @@ checkpoint_once() {
 }
 
 checkpoint_once
-while tmux has-session -t "${session_name}" 2>/dev/null; do
+while runner_active; do
   remaining=${interval_seconds}
-  while [[ "${remaining}" -gt 0 ]] && tmux has-session -t "${session_name}" 2>/dev/null; do
+  while [[ "${remaining}" -gt 0 ]] && runner_active; do
     slice=300
     if [[ "${remaining}" -lt "${slice}" ]]; then
       slice=${remaining}
@@ -70,7 +90,7 @@ while tmux has-session -t "${session_name}" 2>/dev/null; do
     sleep "${slice}"
     remaining=$((remaining - slice))
   done
-  if tmux has-session -t "${session_name}" 2>/dev/null; then
+  if runner_active; then
     checkpoint_once
   fi
 done

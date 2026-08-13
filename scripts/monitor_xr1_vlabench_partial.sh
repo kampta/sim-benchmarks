@@ -9,9 +9,29 @@ base_completed_manifest=${XR1_COMPLETED_MANIFEST:-${original_root}/resume/comple
 session_name=${XR1_SESSION_NAME:-xr1_resume}
 local_shard_count=${XR1_LOCAL_SHARD_COUNT:-4}
 shard_offset=${XR1_SHARD_OFFSET:-0}
+remote_host=${XR1_REMOTE_HOST:-}
 python_bin="${repo_root}/.venv/bin/python"
 audit_script="${resume_root}/provenance/scripts/audit_vlabench_partial.py"
 report_src="${resume_root}/provenance/src"
+
+if [[ -z "${remote_host}" && -f "${resume_root}/base/remote-host.txt" ]]; then
+  remote_host=$(<"${resume_root}/base/remote-host.txt")
+fi
+
+runner_active() {
+  local remote_state
+  if tmux has-session -t "${session_name}" 2>/dev/null; then
+    return 0
+  fi
+  if [[ -n "${remote_host}" ]]; then
+    if ! remote_state=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${remote_host}" \
+      "if tmux has-session -t '${session_name}' 2>/dev/null; then printf active; else printf inactive; fi"); then
+      return 0
+    fi
+    [[ "${remote_state}" == active ]] && return 0
+  fi
+  return 1
+}
 
 audit_once() {
   local eval_id local_shard shard
@@ -30,7 +50,7 @@ audit_once() {
   mv -f "${resume_root}/partial-audit.log.next" "${resume_root}/partial-audit.log"
 }
 
-while tmux has-session -t "${session_name}" 2>/dev/null; do
+while runner_active; do
   audit_once
   sleep 600
 done
