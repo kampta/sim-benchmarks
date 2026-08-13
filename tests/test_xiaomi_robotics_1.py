@@ -792,6 +792,14 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             self.assertIn("runner_active()", scripts[name])
             self.assertIn("base/remote-host.txt", scripts[name])
 
+        recovery_monitor = scripts["monitor_xr1_recovery_checkpoints.sh"]
+        self.assertIn("XR1_CHECKPOINT_MIRROR_ROOT", recovery_monitor)
+        self.assertIn('rsync -a --checksum "${output_dir}/" "${mirror_next}/"', recovery_monitor)
+        self.assertIn("sha256sum -c SHA256SUMS", recovery_monitor)
+        self.assertLess(
+            recovery_monitor.index("sha256sum -c SHA256SUMS"), recovery_monitor.index('mv "${mirror_next}"')
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

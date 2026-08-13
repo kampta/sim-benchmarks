@@ -185,6 +185,9 @@ Active XR-1 TODOs, in execution order:
   four-shard original/prior generations separately from an eight-shard resumed
   generation, audit and checkpoint all shared recordings on Spark1, wait for
   both runner sessions, and automatically run the exact-coverage finalizer.
+- [x] Keep two-node recovery copies: hourly checkpoints are checksum-verified
+  under Spark2-backed `/data/shared2`, then staged, re-verified, and atomically
+  mirrored to Spark1-local `/data/shared1` before being marked latest.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
