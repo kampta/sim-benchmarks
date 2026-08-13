@@ -35,6 +35,7 @@ from sim_benchmarks.provenance.artifacts import verify_checkpoint_files
 from sim_benchmarks.reporting.vlabench import (
     OFFICIAL_EXPECTED_EPISODES,
     aggregate_official_vlabench,
+    compare_protocol_cardinality,
     compare_to_reported,
     load_recording_databases,
     render_comparison_markdown,
@@ -470,6 +471,10 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
                 track: {
                     "macro": {"success": 0.5, "intention_score": 0.6, "progress_score": 0.7},
                     "num_episodes": sum(OFFICIAL_EXPECTED_EPISODES[track].values()),
+                    "tasks": {
+                        task: {"num_episodes": count}
+                        for task, count in OFFICIAL_EXPECTED_EPISODES[track].items()
+                    },
                 }
                 for track in OFFICIAL_EXPECTED_EPISODES
             },
@@ -477,6 +482,7 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             "num_episodes_total": 2460,
         }
         report["reported_comparison"] = compare_to_reported(report)
+        report["protocol_comparison"] = compare_protocol_cardinality(report)
 
         markdown = render_comparison_markdown(report)
 
@@ -485,6 +491,24 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
         self.assertIn("| track_2_cross_category | 460 |", markdown)
         self.assertIn("| overall | 2,460 |", markdown)
         self.assertIn("| track_6_unseen_texture |", markdown)
+        self.assertIn("paper describes 2,500 rollouts", markdown)
+        self.assertIn("pinned released tracks contain 2,460", markdown)
+
+    def test_vlabench_protocol_comparison_records_released_cardinality_gap(self) -> None:
+        report = {
+            "tracks": {
+                track: {"tasks": {task: {"num_episodes": count} for task, count in expected.items()}}
+                for track, expected in OFFICIAL_EXPECTED_EPISODES.items()
+            },
+            "num_episodes_total": 2460,
+        }
+
+        comparison = compare_protocol_cardinality(report)
+
+        self.assertEqual(comparison["paper_described_episodes"], 2500)
+        self.assertEqual(comparison["pinned_released_episodes"], 2460)
+        self.assertEqual(comparison["difference"], -40)
+        self.assertIn("insert_flower", comparison["reason"])
 
     def test_vlabench_coverage_gate_requires_every_pinned_episode(self) -> None:
         tracks = {

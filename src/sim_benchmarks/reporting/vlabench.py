@@ -18,6 +18,7 @@ from sim_benchmarks.benchmarks.vlabench_xr1 import (
 
 METRICS = ("success", "intention_score", "progress_score")
 REPORTED_SOURCE = "https://arxiv.org/html/2607.15330v2#S5.T4"
+REPORTED_PROTOCOL_EPISODES = 2500
 XR1_REPORTED_VLABENCH: dict[str, dict[str, float]] = {
     "track_1_in_distribution": {"success": 0.756, "intention_score": 0.798, "progress_score": 0.850},
     "track_2_cross_category": {"success": 0.530, "intention_score": 0.664, "progress_score": 0.666},
@@ -52,6 +53,7 @@ OFFICIAL_EXPECTED_EPISODES: dict[str, dict[str, int]] = {
     "track_4_semantic_instruction": {task: 50 for task in _STANDARD_TASKS},
     "track_6_unseen_texture": {task: 50 for task in _STANDARD_TASKS},
 }
+PINNED_PROTOCOL_EPISODES = sum(sum(tasks.values()) for tasks in OFFICIAL_EXPECTED_EPISODES.values())
 
 
 def _metrics_from_json(value: str, *, source: str) -> dict[str, float]:
@@ -311,6 +313,36 @@ def compare_to_reported(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def compare_protocol_cardinality(report: dict[str, Any]) -> dict[str, Any]:
+    """Record the released-track cardinality difference from the paper text."""
+
+    measured_episodes = int(report["num_episodes_total"])
+    if measured_episodes != PINNED_PROTOCOL_EPISODES:
+        raise ValueError(
+            f"protocol comparison requires {PINNED_PROTOCOL_EPISODES} pinned episodes, found {measured_episodes}"
+        )
+    cross_category_flower = int(
+        report["tracks"]["track_2_cross_category"]["tasks"]["insert_flower"]["num_episodes"]
+    )
+    if cross_category_flower != 10:
+        raise ValueError(
+            "protocol comparison requires the released Cross-category insert_flower cardinality of 10, "
+            f"found {cross_category_flower}"
+        )
+    return {
+        "reported_source": REPORTED_SOURCE,
+        "paper_described_episodes": REPORTED_PROTOCOL_EPISODES,
+        "pinned_released_episodes": PINNED_PROTOCOL_EPISODES,
+        "difference": PINNED_PROTOCOL_EPISODES - REPORTED_PROTOCOL_EPISODES,
+        "reason": (
+            "The paper describes 50 episodes for every task entry (2,500 total), but the pinned released "
+            "track_2_cross_category file contains only 10 insert_flower configurations rather than 50."
+        ),
+        "comparison_scope": (
+            "Measured metrics use every released pinned identity. Reported metrics are reproduced from Table 4 "
+            "and may reflect the paper-described 2,500-rollout protocol."
+        ),
+    }
 def render_comparison_markdown(report: dict[str, Any]) -> str:
     """Render measured and reported full-suite/per-track metrics side by side."""
 
@@ -331,6 +363,12 @@ def render_comparison_markdown(report: dict[str, Any]) -> str:
         (
             "Aggregation: macro average across task entries. The pinned five-track files contain "
             f"{report['num_episodes_total']:,} episodes."
+        ),
+        (
+            f"Protocol cardinality note: the paper describes {report['protocol_comparison']['paper_described_episodes']:,} "
+            f"rollouts, while the pinned released tracks contain "
+            f"{report['protocol_comparison']['pinned_released_episodes']:,}. "
+            f"{report['protocol_comparison']['reason']}"
         ),
         "",
         "| " + " | ".join(header) + " |",
@@ -484,6 +522,7 @@ def main() -> None:
         results = [json.loads(path.read_text(encoding="utf-8")) for path in args.aggregates]
     report = aggregate_official_vlabench(results)
     report["coverage_validation"] = validate_official_coverage(report)
+    report["protocol_comparison"] = compare_protocol_cardinality(report)
     if args.track_dir is not None:
         report["episode_identity_validation"] = validate_official_episode_identities(results, args.track_dir)
     if database_validation is not None:
