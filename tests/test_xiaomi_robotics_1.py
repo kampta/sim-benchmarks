@@ -32,6 +32,7 @@ from sim_benchmarks.reporting.vlabench import (
     aggregate_official_vlabench,
     compare_to_reported,
     load_recording_databases,
+    render_comparison_markdown,
     validate_official_coverage,
     validate_official_episode_identities,
 )
@@ -368,6 +369,28 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             comparison["tracks"]["overall"]["delta_percentage_points"]["progress_score"],
             -0.3,
         )
+
+    def test_vlabench_comparison_markdown_orders_sr_ps_is_and_includes_all_scopes(self) -> None:
+        report = {
+            "tracks": {
+                track: {
+                    "macro": {"success": 0.5, "intention_score": 0.6, "progress_score": 0.7},
+                    "num_episodes": sum(OFFICIAL_EXPECTED_EPISODES[track].values()),
+                }
+                for track in OFFICIAL_EXPECTED_EPISODES
+            },
+            "overall": {"success": 0.5, "intention_score": 0.6, "progress_score": 0.7},
+            "num_episodes_total": 2460,
+        }
+        report["reported_comparison"] = compare_to_reported(report)
+
+        markdown = render_comparison_markdown(report)
+
+        self.assertIn("| Scope | Episodes | Measured SR | Reported SR | ΔSR (pp)", markdown)
+        self.assertLess(markdown.index("Measured PS"), markdown.index("Measured IS"))
+        self.assertIn("| track_2_cross_category | 460 |", markdown)
+        self.assertIn("| overall | 2,460 |", markdown)
+        self.assertIn("| track_6_unseen_texture |", markdown)
 
     def test_vlabench_coverage_gate_requires_every_pinned_episode(self) -> None:
         tracks = {

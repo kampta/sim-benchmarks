@@ -311,6 +311,56 @@ def compare_to_reported(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def render_comparison_markdown(report: dict[str, Any]) -> str:
+    """Render measured and reported full-suite/per-track metrics side by side."""
+
+    comparison = report["reported_comparison"]
+    metric_columns = (
+        ("success", "SR"),
+        ("progress_score", "PS"),
+        ("intention_score", "IS"),
+    )
+    header = ["Scope", "Episodes"]
+    for _, label in metric_columns:
+        header.extend((f"Measured {label}", f"Reported {label}", f"Δ{label} (pp)"))
+    lines = [
+        "# Xiaomi-Robotics-1 VLABench reproduction",
+        "",
+        f"Reported reference: <{comparison['source']}>",
+        "",
+        (
+            "Aggregation: macro average across task entries. The pinned five-track files contain "
+            f"{report['num_episodes_total']:,} episodes."
+        ),
+        "",
+        "| " + " | ".join(header) + " |",
+        "| :--- | ---: | " + " | ".join("---:" for _ in range(len(header) - 2)) + " |",
+    ]
+    for scope in (*OFFICIAL_TRACKS, "overall"):
+        entry = comparison["tracks"][scope]
+        episodes = report["num_episodes_total"] if scope == "overall" else report["tracks"][scope]["num_episodes"]
+        cells = [scope, f"{episodes:,}"]
+        for metric, _ in metric_columns:
+            cells.extend(
+                (
+                    f"{100.0 * entry['measured'][metric]:.2f}",
+                    f"{100.0 * entry['reported'][metric]:.2f}",
+                    f"{entry['delta_percentage_points'][metric]:+.2f}",
+                )
+            )
+        lines.append("| " + " | ".join(cells) + " |")
+    lines.extend(
+        (
+            "",
+            (
+                "All values except episode counts are percentages; deltas are measured minus reported "
+                "in percentage points."
+            ),
+        )
+    )
+    return "\n".join(lines) + "\n"
+
+
 def validate_official_episode_identities(results: list[dict[str, Any]], track_dir: Path) -> dict[str, Any]:
     """Match every recorded episode index and config digest to the pinned tracks."""
 
@@ -420,6 +470,7 @@ def main() -> None:
         help="directory containing the five pinned track JSON files for exact identity validation",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--markdown-output", type=Path)
     args = parser.parse_args()
     if bool(args.aggregates) == bool(args.db):
         parser.error("provide either aggregate JSON files or --db recording databases")
@@ -440,6 +491,9 @@ def main() -> None:
     report["reported_comparison"] = compare_to_reported(report)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if args.markdown_output is not None:
+        args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        args.markdown_output.write_text(render_comparison_markdown(report), encoding="utf-8")
     print(json.dumps(report["overall"], indent=2))
 
 
