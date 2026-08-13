@@ -159,6 +159,12 @@ Active XR-1 TODOs, in execution order:
   pending identities across four shards. Parameterize auditing, checkpointing,
   retry mounts, and final aggregation so the prior clean checkpoint is included
   exactly once in the eventual 2,460-identity report.
+- [x] Match Xiaomi/VLABench's released handling of unstable simulator episodes:
+  require exact attempted-identity coverage, preserve every raw exception and
+  partial step trace, report the upstream-compatible available-case task macro,
+  and include a conservative zero-imputed sensitivity result. This was needed
+  after one pinned `select_book` identity reproduced `mjWARN_BADQACC` at the
+  same step in two independent generations with fixed request seed 42.
 - [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.

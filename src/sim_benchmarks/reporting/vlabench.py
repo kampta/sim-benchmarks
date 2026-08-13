@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import sqlite3
@@ -13,7 +14,9 @@ from typing import Any
 
 from sim_benchmarks.benchmarks.vlabench_xr1 import (
     OFFICIAL_TRACKS,
+    EpisodeIdentity,
     load_vlabench_episode_tasks,
+    task_episode_identity,
 )
 
 METRICS = ("success", "intention_score", "progress_score")
@@ -54,6 +57,77 @@ OFFICIAL_EXPECTED_EPISODES: dict[str, dict[str, int]] = {
     "track_6_unseen_texture": {task: 50 for task in _STANDARD_TASKS},
 }
 PINNED_PROTOCOL_EPISODES = sum(sum(tasks.values()) for tasks in OFFICIAL_EXPECTED_EPISODES.values())
+UPSTREAM_RUNTIME_ERROR_PROTOCOL = (
+    "Xiaomi's pinned VLABench Evaluator catches unstable-episode exceptions, omits those episodes from "
+    "task_infos, and computes each task mean over the remaining records."
+)
+
+
+def load_runtime_error_records(
+    paths: list[Path], *, validate_databases: bool = False
+) -> list[dict[str, Any]]:
+    """Load unresolved simulator errors, rejecting malformed or duplicate identities."""
+
+    errors: list[dict[str, Any]] = []
+    observed: set[EpisodeIdentity] = set()
+    for path in paths:
+        decoded = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(decoded, list):
+            raise TypeError(f"{path}: runtime error records must be a list")
+        for index, record in enumerate(decoded):
+            if not isinstance(record, dict) or not isinstance(record.get("identity"), dict):
+                raise TypeError(f"{path}: runtime error record {index} is malformed")
+            identity_record = record["identity"]
+            identity = task_episode_identity(
+                {
+                    "suite": identity_record.get("suite"),
+                    "name": identity_record.get("task_name"),
+                    "episode_index": identity_record.get("episode_index"),
+                    "episode_config_sha256": identity_record.get("episode_config_sha256"),
+                }
+            )
+            if identity in observed:
+                raise ValueError(f"duplicate unresolved runtime-error identity: {identity}")
+            if record.get("status") != "error" or not record.get("failure_reason"):
+                raise ValueError(f"{path}: unresolved record is not a well-formed runtime error: {identity}")
+            if validate_databases:
+                database_value = record.get("database") or record.get("source")
+                if not isinstance(database_value, str):
+                    raise ValueError(f"{path}: runtime error lacks its preserved database: {identity}")
+                database = Path(database_value).resolve()
+                if not database.is_file():
+                    raise FileNotFoundError(database)
+                connection = sqlite3.connect(database)
+                connection.row_factory = sqlite3.Row
+                try:
+                    integrity = str(connection.execute("PRAGMA quick_check").fetchone()[0])
+                    if integrity != "ok":
+                        raise ValueError(f"{database}: SQLite quick_check failed: {integrity}")
+                    row = connection.execute(
+                        """SELECT status, failure_reason FROM episode_results
+                           WHERE sid = ? AND eid = ?""",
+                        (record.get("sid"), record.get("eid")),
+                    ).fetchone()
+                    if row is None or row["status"] != "error" or not row["failure_reason"]:
+                        raise ValueError(f"{database}: unresolved error row is missing: {identity}")
+                    step_stats = connection.execute(
+                        """SELECT COUNT(*), MIN(step_id), MAX(step_id) FROM step_rows
+                           WHERE sid = ? AND eid = ?""",
+                        (record.get("sid"), record.get("eid")),
+                    ).fetchone()
+                    step_count = int(step_stats[0])
+                    if step_count and (int(step_stats[1]), int(step_stats[2])) != (0, step_count - 1):
+                        raise ValueError(f"{database}: runtime-error step rows are non-contiguous: {identity}")
+                finally:
+                    connection.close()
+                record = dict(record)
+                record["preserved_database"] = str(database)
+                record["preserved_database_sha256"] = sha256(database.read_bytes()).hexdigest()
+                record["sqlite_quick_check"] = integrity
+                record["stored_step_rows"] = step_count
+            observed.add(identity)
+            errors.append(record)
+    return errors
 
 
 def _metrics_from_json(value: str, *, source: str) -> dict[str, float]:
@@ -316,13 +390,17 @@ def compare_to_reported(report: dict[str, Any]) -> dict[str, Any]:
 def compare_protocol_cardinality(report: dict[str, Any]) -> dict[str, Any]:
     """Record the released-track cardinality difference from the paper text."""
 
-    measured_episodes = int(report["num_episodes_total"])
+    measured_episodes = int(report.get("num_attempted_episodes", report["num_episodes_total"]))
     if measured_episodes != PINNED_PROTOCOL_EPISODES:
         raise ValueError(
             f"protocol comparison requires {PINNED_PROTOCOL_EPISODES} pinned episodes, found {measured_episodes}"
         )
     cross_category_flower = int(
-        report["tracks"]["track_2_cross_category"]["tasks"]["insert_flower"]["num_episodes"]
+        report["tracks"]["track_2_cross_category"]["tasks"].get("insert_flower", {}).get("num_episodes", 0)
+    ) + sum(
+        record["identity"]["suite"] == "track_2_cross_category"
+        and record["identity"]["task_name"] == "insert_flower"
+        for record in report.get("runtime_errors", [])
     )
     if cross_category_flower != 10:
         raise ValueError(
@@ -339,8 +417,9 @@ def compare_protocol_cardinality(report: dict[str, Any]) -> dict[str, Any]:
             "track_2_cross_category file contains only 10 insert_flower configurations rather than 50."
         ),
         "comparison_scope": (
-            "Measured metrics use every released pinned identity. Reported metrics are reproduced from Table 4 "
-            "and may reflect the paper-described 2,500-rollout protocol."
+            "Every released pinned identity is attempted. Available-case metrics follow Xiaomi's released "
+            "handling of unstable simulator exceptions; reported metrics are reproduced from Table 4 and may "
+            "reflect the paper-described 2,500-rollout protocol."
         ),
     }
 def render_comparison_markdown(report: dict[str, Any]) -> str:
@@ -362,7 +441,7 @@ def render_comparison_markdown(report: dict[str, Any]) -> str:
         "",
         (
             "Aggregation: macro average across task entries. The pinned five-track files contain "
-            f"{report['num_episodes_total']:,} episodes."
+            f"{report.get('num_attempted_episodes', report['num_episodes_total']):,} attempted episodes."
         ),
         (
             f"Protocol cardinality note: the paper describes {report['protocol_comparison']['paper_described_episodes']:,} "
@@ -374,9 +453,19 @@ def render_comparison_markdown(report: dict[str, Any]) -> str:
         "| " + " | ".join(header) + " |",
         "| :--- | ---: | " + " | ".join("---:" for _ in range(len(header) - 2)) + " |",
     ]
+    excluded = len(report.get("runtime_errors", []))
+    if excluded:
+        lines[4] += (
+            f" Xiaomi-compatible available-case scoring includes {report['num_scored_episodes']:,} scored "
+            f"episodes and excludes {excluded} preserved simulator error(s)."
+        )
     for scope in (*OFFICIAL_TRACKS, "overall"):
         entry = comparison["tracks"][scope]
-        episodes = report["num_episodes_total"] if scope == "overall" else report["tracks"][scope]["num_episodes"]
+        episodes = (
+            report.get("num_attempted_episodes", report["num_episodes_total"])
+            if scope == "overall"
+            else sum(OFFICIAL_EXPECTED_EPISODES[scope].values())
+        )
         cells = [scope, f"{episodes:,}"]
         for metric, _ in metric_columns:
             cells.extend(
@@ -396,6 +485,18 @@ def render_comparison_markdown(report: dict[str, Any]) -> str:
             ),
         )
     )
+    if excluded:
+        lines.extend(
+            (
+                "",
+                f"Runtime-error handling: {UPSTREAM_RUNTIME_ERROR_PROTOCOL}",
+                "",
+                (
+                    "A conservative zero-imputed sensitivity result is included in `report.json`; it is not "
+                    "the Xiaomi-compatible primary comparison."
+                ),
+            )
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -488,6 +589,137 @@ def validate_official_coverage(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _runtime_error_identities(runtime_errors: list[dict[str, Any]]) -> set[EpisodeIdentity]:
+    identities: set[EpisodeIdentity] = set()
+    for record in runtime_errors:
+        identity_record = record["identity"]
+        identity = task_episode_identity(
+            {
+                "suite": identity_record.get("suite"),
+                "name": identity_record.get("task_name"),
+                "episode_index": identity_record.get("episode_index"),
+                "episode_config_sha256": identity_record.get("episode_config_sha256"),
+            }
+        )
+        if identity in identities:
+            raise ValueError(f"duplicate unresolved runtime-error identity: {identity}")
+        identities.add(identity)
+    return identities
+
+
+def validate_official_attempt_coverage(
+    results: list[dict[str, Any]],
+    runtime_errors: list[dict[str, Any]],
+    track_dir: Path,
+) -> dict[str, Any]:
+    """Require each pinned identity to be either scored once or preserved as an error."""
+
+    scored_validation = validate_official_episode_identities(results, track_dir) if not runtime_errors else None
+    if scored_validation is not None:
+        return {
+            "status": "exact_complete",
+            "expected_identities": scored_validation["expected_identities"],
+            "scored_identities": scored_validation["observed_identities"],
+            "runtime_error_identities": 0,
+            "attempted_identities": scored_validation["observed_identities"],
+            "track_file_sha256": scored_validation["track_file_sha256"],
+        }
+
+    track_dir = track_dir.resolve()
+    expected: set[EpisodeIdentity] = set()
+    track_hashes: dict[str, str] = {}
+    for track in OFFICIAL_TRACKS:
+        path = track_dir / f"{track}.json"
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        track_hashes[track] = sha256(path.read_bytes()).hexdigest()
+        for task in load_vlabench_episode_tasks(path, suite=track, episode_limit=50):
+            expected.add(task_episode_identity(task))
+
+    scored: Counter[EpisodeIdentity] = Counter()
+    for result in results:
+        track = result.get("config", {}).get("params", {}).get("eval_track")
+        for task in result.get("tasks", []):
+            for episode in task.get("episodes", []):
+                scored[_episode_key(track, task.get("task"), episode)] += 1
+    duplicate_scored = sorted((identity, count) for identity, count in scored.items() if count != 1)
+    errors = _runtime_error_identities(runtime_errors)
+    overlap = sorted(set(scored) & errors)
+    attempted = set(scored) | errors
+    missing = sorted(expected - attempted)
+    unexpected = sorted(attempted - expected)
+    if duplicate_scored or overlap or missing or unexpected:
+        raise ValueError(
+            "official attempted-identity validation failed: "
+            f"duplicates={duplicate_scored[:3]}; scored_error_overlap={overlap[:3]}; "
+            f"missing={missing[:3]}; unexpected={unexpected[:3]}"
+        )
+    return {
+        "status": "exact_complete_with_runtime_exclusions" if errors else "exact_complete",
+        "expected_identities": len(expected),
+        "scored_identities": len(scored),
+        "runtime_error_identities": len(errors),
+        "attempted_identities": len(attempted),
+        "track_file_sha256": track_hashes,
+    }
+
+
+def zero_impute_runtime_errors(
+    report: dict[str, Any], runtime_errors: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Return a sensitivity analysis that assigns zero to every excluded error."""
+
+    adjusted = copy.deepcopy(report)
+    error_counts: Counter[tuple[str, str]] = Counter(
+        (record["identity"]["suite"], record["identity"]["task_name"])
+        for record in runtime_errors
+    )
+    for (track, task), error_count in error_counts.items():
+        scores = adjusted["tracks"][track]["tasks"].get(task)
+        if scores is None:
+            scores = {metric: 0.0 for metric in METRICS}
+            scores["num_episodes"] = 0
+            adjusted["tracks"][track]["tasks"][task] = scores
+        old_count = int(scores["num_episodes"])
+        new_count = old_count + error_count
+        for metric in METRICS:
+            scores[metric] = float(scores[metric]) * old_count / new_count
+        scores["num_episodes"] = new_count
+
+    for track in OFFICIAL_TRACKS:
+        tasks = adjusted["tracks"][track]["tasks"]
+        adjusted["tracks"][track]["macro"] = {
+            metric: sum(float(scores[metric]) for scores in tasks.values()) / len(tasks) for metric in METRICS
+        }
+        adjusted["tracks"][track]["num_tasks"] = len(tasks)
+        adjusted["tracks"][track]["num_episodes"] = sum(
+            int(scores["num_episodes"]) for scores in tasks.values()
+        )
+    all_tasks = [
+        scores
+        for track in OFFICIAL_TRACKS
+        for scores in adjusted["tracks"][track]["tasks"].values()
+    ]
+    adjusted["overall"] = {
+        metric: sum(float(scores[metric]) for scores in all_tasks) / len(all_tasks) for metric in METRICS
+    }
+    adjusted["num_episodes_total"] = sum(
+        adjusted["tracks"][track]["num_episodes"] for track in OFFICIAL_TRACKS
+    )
+    return {
+        "method": "assign_zero_to_each_unresolved_runtime_error",
+        "tracks": {
+            track: {
+                "macro": adjusted["tracks"][track]["macro"],
+                "num_episodes": adjusted["tracks"][track]["num_episodes"],
+            }
+            for track in OFFICIAL_TRACKS
+        },
+        "overall": adjusted["overall"],
+        "num_episodes_total": adjusted["num_episodes_total"],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -507,6 +739,12 @@ def main() -> None:
         type=Path,
         help="directory containing the five pinned track JSON files for exact identity validation",
     )
+    parser.add_argument(
+        "--runtime-errors-json",
+        nargs="+",
+        type=Path,
+        help="final unresolved error records emitted by prepare_vlabench_retries.py",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path)
     args = parser.parse_args()
@@ -521,13 +759,49 @@ def main() -> None:
     else:
         results = [json.loads(path.read_text(encoding="utf-8")) for path in args.aggregates]
     report = aggregate_official_vlabench(results)
-    report["coverage_validation"] = validate_official_coverage(report)
+    runtime_errors = load_runtime_error_records(args.runtime_errors_json or [], validate_databases=True)
+    if runtime_errors:
+        report["num_scored_episodes"] = report["num_episodes_total"]
+        report["num_attempted_episodes"] = report["num_scored_episodes"] + len(runtime_errors)
+        report["runtime_errors"] = runtime_errors
+        report["scoring_protocol"] = {
+            "primary": "xiaomi_compatible_available_case",
+            "runtime_error_handling": UPSTREAM_RUNTIME_ERROR_PROTOCOL,
+            "xiaomi_source_revision": "6bc75afb791a1938750fe5fc0aee2b0f28cf87e2",
+            "vlabench_source_revision": "cf588fe60c0c7282174fe979f5913170cfe69017",
+            "vlabench_evaluator_path": "VLABench/evaluation/evaluator/base.py",
+            "sensitivity_analysis": "zero_imputation",
+        }
+        report["coverage_validation"] = {
+            "status": "complete_with_runtime_exclusions",
+            "expected_episodes": PINNED_PROTOCOL_EPISODES,
+            "attempted_episodes": report["num_attempted_episodes"],
+            "scored_episodes": report["num_scored_episodes"],
+            "runtime_error_episodes": len(runtime_errors),
+            "expected_tracks": list(OFFICIAL_TRACKS),
+        }
+        if report["num_attempted_episodes"] != PINNED_PROTOCOL_EPISODES:
+            raise ValueError(
+                f"attempt coverage requires {PINNED_PROTOCOL_EPISODES} identities, "
+                f"found {report['num_attempted_episodes']}"
+            )
+        report["zero_imputed_sensitivity"] = zero_impute_runtime_errors(report, runtime_errors)
+    else:
+        report["coverage_validation"] = validate_official_coverage(report)
+        report["num_scored_episodes"] = report["num_episodes_total"]
+        report["num_attempted_episodes"] = report["num_episodes_total"]
     report["protocol_comparison"] = compare_protocol_cardinality(report)
     if args.track_dir is not None:
-        report["episode_identity_validation"] = validate_official_episode_identities(results, args.track_dir)
+        report["episode_identity_validation"] = validate_official_attempt_coverage(
+            results, runtime_errors, args.track_dir
+        )
     if database_validation is not None:
         report["recording_validation"] = database_validation
     report["reported_comparison"] = compare_to_reported(report)
+    if runtime_errors:
+        report["zero_imputed_reported_comparison"] = compare_to_reported(
+            report["zero_imputed_sensitivity"]
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     if args.markdown_output is not None:

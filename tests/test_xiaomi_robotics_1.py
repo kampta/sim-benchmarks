@@ -38,9 +38,12 @@ from sim_benchmarks.reporting.vlabench import (
     compare_protocol_cardinality,
     compare_to_reported,
     load_recording_databases,
+    load_runtime_error_records,
     render_comparison_markdown,
+    validate_official_attempt_coverage,
     validate_official_coverage,
     validate_official_episode_identities,
+    zero_impute_runtime_errors,
 )
 
 
@@ -646,6 +649,122 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             results.append(results[0])
             with self.assertRaisesRegex(ValueError, "duplicate identities"):
                 validate_official_episode_identities(results, track_dir)
+
+    def test_vlabench_attempt_coverage_accepts_preserved_runtime_error(self) -> None:
+        tracks = tuple(OFFICIAL_EXPECTED_EPISODES)
+        with tempfile.TemporaryDirectory() as directory:
+            track_dir = Path(directory)
+            results = []
+            identities = []
+            for index, track in enumerate(tracks):
+                config = {"seed": index}
+                (track_dir / f"{track}.json").write_text(
+                    json.dumps({"select_fruit": [config]}), encoding="utf-8"
+                )
+                digest = hashlib.sha256(
+                    json.dumps(config, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+                identities.append((track, digest))
+                if index < len(tracks) - 1:
+                    results.append(
+                        {
+                            "config": {"params": {"eval_track": track}},
+                            "tasks": [
+                                {
+                                    "task": "select_fruit",
+                                    "episodes": [
+                                        {"episode_index": 0, "episode_config_sha256": digest}
+                                    ],
+                                }
+                            ],
+                        }
+                    )
+            error = {
+                "identity": {
+                    "suite": identities[-1][0],
+                    "task_name": "select_fruit",
+                    "episode_index": 0,
+                    "episode_config_sha256": identities[-1][1],
+                },
+                "status": "error",
+                "failure_reason": "exception",
+            }
+
+            validation = validate_official_attempt_coverage(results, [error], track_dir)
+
+            self.assertEqual(validation["status"], "exact_complete_with_runtime_exclusions")
+            self.assertEqual(validation["scored_identities"], 4)
+            self.assertEqual(validation["runtime_error_identities"], 1)
+            self.assertEqual(validation["attempted_identities"], 5)
+
+    def test_vlabench_runtime_error_loader_and_zero_imputation(self) -> None:
+        error = {
+            "identity": {
+                "suite": "track_1_in_distribution",
+                "task_name": "select_fruit",
+                "episode_index": 7,
+                "episode_config_sha256": "a" * 64,
+            },
+            "status": "error",
+            "failure_reason": "exception",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "errors.json"
+            path.write_text(json.dumps([error]), encoding="utf-8")
+            self.assertEqual(load_runtime_error_records([path]), [error])
+
+            database = Path(directory) / "raw.sqlite"
+            connection = sqlite3.connect(database)
+            connection.executescript(
+                """
+                CREATE TABLE episode_results (
+                    sid TEXT, eid TEXT, status TEXT, failure_reason TEXT
+                );
+                CREATE TABLE step_rows (
+                    sid TEXT, eid TEXT, step_id INTEGER, fields TEXT
+                );
+                INSERT INTO episode_results VALUES ('sid', 'eid', 'error', 'exception');
+                INSERT INTO step_rows VALUES ('sid', 'eid', 0, '{}');
+                INSERT INTO step_rows VALUES ('sid', 'eid', 1, '{}');
+                """
+            )
+            connection.commit()
+            connection.close()
+            strict_error = {**error, "database": str(database), "sid": "sid", "eid": "eid"}
+            path.write_text(json.dumps([strict_error]), encoding="utf-8")
+
+            validated = load_runtime_error_records([path], validate_databases=True)
+
+            self.assertEqual(validated[0]["sqlite_quick_check"], "ok")
+            self.assertEqual(validated[0]["stored_step_rows"], 2)
+            self.assertEqual(len(validated[0]["preserved_database_sha256"]), 64)
+
+        report = {
+            "tracks": {
+                track: {
+                    "tasks": {
+                        "select_fruit": {
+                            "success": 0.5,
+                            "intention_score": 0.5,
+                            "progress_score": 0.5,
+                            "num_episodes": 1,
+                        }
+                    },
+                    "macro": {metric: 0.5 for metric in ("success", "intention_score", "progress_score")},
+                    "num_tasks": 1,
+                    "num_episodes": 1,
+                }
+                for track in OFFICIAL_EXPECTED_EPISODES
+            },
+            "overall": {metric: 0.5 for metric in ("success", "intention_score", "progress_score")},
+            "num_episodes_total": 5,
+        }
+
+        adjusted = zero_impute_runtime_errors(report, [error])
+
+        self.assertEqual(adjusted["num_episodes_total"], 6)
+        self.assertEqual(adjusted["tracks"]["track_1_in_distribution"]["macro"]["success"], 0.25)
+        self.assertAlmostEqual(adjusted["overall"]["success"], 0.45)
 
 
 if __name__ == "__main__":

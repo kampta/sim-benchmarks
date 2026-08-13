@@ -130,6 +130,7 @@ for shard in 0 1 2 3; do
   scored_resume_databases+=("${recovery_dir}/clean/shard${shard}.sqlite")
 done
 retry_databases=()
+runtime_error_args=()
 
 if [[ "${retry_count}" -gt 0 ]]; then
   export HF_HOME=/data/shared1/cache/huggingface
@@ -217,9 +218,16 @@ if [[ "${retry_count}" -gt 0 ]]; then
   wait "${retry_server_pid}" 2>/dev/null || true
   retry_server_pid=
   if [[ "${retry_count}" -gt 0 ]]; then
-    printf '%s retries exhausted remaining=%s\n' \
+    unresolved_errors="${retry_attempt_dir}/failed-attempts.json"
+    if [[ ! -f "${unresolved_errors}" ]]; then
+      printf '%s retries exhausted but unresolved error records are missing\n' \
+        "$(date -Is)" >"${resume_root}/finalizer-status.txt"
+      exit 1
+    fi
+    cp "${unresolved_errors}" "${recovery_dir}/unresolved-runtime-errors.json"
+    runtime_error_args=(--runtime-errors-json "${recovery_dir}/unresolved-runtime-errors.json")
+    printf '%s retries exhausted; preserving %s Xiaomi-compatible runtime exclusion(s)\n' \
       "$(date -Is)" "${retry_count}" >"${resume_root}/finalizer-status.txt"
-    exit 1
   fi
 fi
 sha256sum "${snapshot_dir}"/*.sqlite >"${snapshot_dir}/SHA256SUMS"
@@ -227,6 +235,7 @@ sha256sum "${snapshot_dir}"/*.sqlite >"${snapshot_dir}/SHA256SUMS"
 PYTHONPATH="${report_src}" "${python_bin}" -m sim_benchmarks.reporting.vlabench \
   --db "${prior_databases[@]}" "${scored_resume_databases[@]}" "${retry_databases[@]}" \
   --track-dir "${track_dir}" \
+  "${runtime_error_args[@]}" \
   --output "${final_root}/report.json" \
   --markdown-output "${final_root}/comparison.md" \
   >"${final_root}/report.log" 2>&1
@@ -236,13 +245,18 @@ import json
 import sys
 
 report = json.load(open(sys.argv[1], encoding="utf-8"))
-assert report["num_episodes_total"] == 2460
-assert report["coverage_validation"]["status"] == "complete"
-assert report["episode_identity_validation"]["status"] == "exact_complete"
-assert report["episode_identity_validation"]["observed_identities"] == 2460
-assert sum(entry["episode_results"] for entry in report["recording_validation"]) == 2460
+assert report["num_attempted_episodes"] == 2460
+assert report["coverage_validation"]["status"] in {"complete", "complete_with_runtime_exclusions"}
+assert report["episode_identity_validation"]["status"] in {
+    "exact_complete",
+    "exact_complete_with_runtime_exclusions",
+}
+assert report["episode_identity_validation"]["attempted_identities"] == 2460
+excluded = len(report.get("runtime_errors", []))
+assert report["num_scored_episodes"] + excluded == 2460
+assert sum(entry["episode_results"] for entry in report["recording_validation"]) == report["num_scored_episodes"]
 PY
 
 sha256sum "${final_root}/report.json" "${final_root}/comparison.md" >"${final_root}/SHA256SUMS"
-printf '%s complete episodes=2460 report=%s\n' \
+printf '%s complete attempted_episodes=2460 report=%s\n' \
   "$(date -Is)" "${final_root}/report.json" >"${resume_root}/finalizer-status.txt"
