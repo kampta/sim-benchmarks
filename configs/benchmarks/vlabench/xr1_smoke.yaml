@@ -1,8 +1,15 @@
 # Contract smoke test only; this is not the official VLABench reproduction suite.
 server:
-  url: "ws://localhost:8000"
+  url: "ws://localhost:18000"
+  timeout: 300.0
 
-output_dir: "./results/vlabench/xr1_smoke"
+docker:
+  image: "sim-benchmarks/vlabench:cf588fe"
+  gpus: "all"
+  env:
+    - "MUJOCO_EGL_DEVICE_ID=0"
+
+output_dir: "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_smoke"
 
 benchmarks:
   - benchmark: "sim_benchmarks.benchmarks.vlabench_xr1:XR1VLABenchBenchmark"
@@ -11,5 +18,9 @@ benchmarks:
       tasks:
         - "select_fruit"
       robot: "franka"
-      max_steps: 200
+      max_steps: 300
+      eval_track: "track_1_in_distribution"
+      episode_limit: 1
+      seed: 42
+      intention_score_threshold: 0.1
       position_offset: [0.0, -0.4, 0.78]

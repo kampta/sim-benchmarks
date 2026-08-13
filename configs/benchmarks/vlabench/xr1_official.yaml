@@ -1,0 +1,56 @@
+# Xiaomi-Robotics-1's released five-track VLABench protocol.
+# Each track file supplies fixed episode configs. Track 2 contains 460 rather
+# than 500 episodes, so use the macro-task report command documented below.
+server:
+  url: "ws://localhost:18000"
+  timeout: 300.0
+
+docker:
+  image: "sim-benchmarks/vlabench:cf588fe"
+  gpus: "all"
+  env:
+    - "MUJOCO_EGL_DEVICE_ID=0"
+
+output_dir: "/data/shared2/user/kampta/logs/sim_benchmarks/vlabench/xr1_official"
+
+benchmarks:
+  - benchmark: &benchmark "sim_benchmarks.benchmarks.vlabench_xr1:XR1VLABenchBenchmark"
+    subname: "track_1_in_distribution"
+    episodes_per_task: 1
+    max_steps: 300
+    params: &params
+      robot: "franka"
+      max_steps: 300
+      eval_track: "track_1_in_distribution"
+      episode_limit: 50
+      seed: 42
+      intention_score_threshold: 0.1
+      position_offset: [0.0, -0.4, 0.78]
+  - benchmark: *benchmark
+    subname: "track_2_cross_category"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_2_cross_category"
+  - benchmark: *benchmark
+    subname: "track_3_common_sense"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_3_common_sense"
+  - benchmark: *benchmark
+    subname: "track_4_semantic_instruction"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_4_semantic_instruction"
+  - benchmark: *benchmark
+    subname: "track_6_unseen_texture"
+    episodes_per_task: 1
+    max_steps: 300
+    params:
+      <<: *params
+      eval_track: "track_6_unseen_texture"

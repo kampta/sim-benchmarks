@@ -90,7 +90,7 @@ below are upstream reference targets, not our measurements:
 
 | Benchmark | Xiaomi-published reference | Reproduced here | Current state |
 |---|---:|---:|---|
-| VLABench | 59.1% headline SR | — | Adapter scaffolded; runtime smoke test and official metrics remain. |
+| VLABench | 59.1% headline SR | — | One pinned 200-step XR-1 episode now passes end-to-end evaluation/recording; the full five-track score remains outstanding. |
 | RoboCasa | 74.5% headline; detailed evaluation guide reports 74.2% over 24 × 100 episodes | — | Pinned harness adapter must be audited against RoboCasa v0.2. |
 | RoboCasa365 | 57.4% headline; detailed guide reports 1,432/2,500 = 57.28% | — | Adapter must be reviewed/backported and the `target50` protocol frozen. |
 | RoboDojo | 13.93% headline | — | No XR-1 checkpoint is published; no adapter is present in pinned v0.4.0. |
@@ -121,10 +121,16 @@ Active XR-1 TODOs, in execution order:
   reference scores.
 - [x] Add a fail-closed XR-1 `PredictModelServer` over WebSocket/MessagePack and
   unit-test the VLABench observation/action contract.
-- [ ] Finish the pinned VLABench container/assets and pass one complete
+- [x] Finish the pinned VLABench container/assets and checkpoint transfer, verify
+  their official digests, and pass one complete
   reset → inference → action → step → recording smoke test.
-- [ ] Add the five official VLABench tracks, deterministic episode manifests,
-  and SR/IS/PS aggregation; reproduce the published 59.1% SR.
+- [x] Add the five official VLABench tracks, deterministic episode manifests,
+  task-specific horizons, and SR/IS/PS aggregation.
+- [x] Audit the adapter against Xiaomi's pinned VLABench evaluator at
+  `6bc75afb791a1938750fe5fc0aee2b0f28cf87e2`, including camera order, prompt,
+  state frame, action accumulation, five-step replanning, gripper command,
+  reset behavior, horizons, metrics, and task-macro aggregation.
+- [ ] Run the complete five-track suite and reproduce the published 59.1% SR.
 - [ ] Audit RoboCasa v0.2 cameras, controller, horizons, seeds, and action
   semantics; reproduce the published 74.5% headline / 74.2% detailed result.
 - [ ] Add or backport RoboCasa365, freeze its official `target50` suite, and

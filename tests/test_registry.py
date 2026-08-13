@@ -8,13 +8,15 @@ from sim_benchmarks.registry import benchmark_manifests, dataset_catalog, model_
 class RegistryTests(unittest.TestCase):
     def test_first_wave_benchmarks_are_pinned(self) -> None:
         manifests = benchmark_manifests()
+        by_id = {item["id"]: item for item in manifests}
         self.assertEqual(
-            {item["id"] for item in manifests},
+            {item["id"] for item in manifests if item["status"] == "planned"},
             {"colosseum_v2", "vla_arena", "domino", "ebench"},
         )
         for item in manifests:
             self.assertEqual(len(item["revision"]), 40)
-            self.assertEqual(item["status"], "planned")
+        self.assertEqual(by_id["vlabench"]["status"], "scaffolded")
+        self.assertEqual(len(by_id["vlabench"]["tracks"]), 5)
 
     def test_dataset_catalog_is_limited_to_benchmark_evaluation_data(self) -> None:
         catalog = dataset_catalog()

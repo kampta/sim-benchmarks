@@ -1,0 +1,11 @@
+.git
+.github
+.upstream
+.venv
+.pytest_cache
+.ruff_cache
+artifacts
+dist
+results
+**/__pycache__
+**/*.pyc

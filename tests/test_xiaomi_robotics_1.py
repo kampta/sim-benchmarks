@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -8,7 +13,11 @@ import numpy as np
 from vla_eval.model_servers.base import SessionContext
 from vla_eval.model_servers.predict import PredictModelServer
 
-from sim_benchmarks.benchmarks.vlabench_xr1 import make_xr1_vlabench_observation
+from sim_benchmarks.benchmarks.vlabench_xr1 import (
+    load_vlabench_episode_tasks,
+    make_xr1_vlabench_observation,
+    resolve_episode_max_steps,
+)
 from sim_benchmarks.model_servers.xiaomi_robotics_1 import (
     XiaomiRobotics1VLABenchServer,
     XR1VLABenchProfile,
@@ -16,6 +25,15 @@ from sim_benchmarks.model_servers.xiaomi_robotics_1 import (
     normalize_vlabench_actions,
     plan_vlabench_actions,
     prepare_vlabench_observation,
+)
+from sim_benchmarks.provenance.artifacts import verify_checkpoint_files
+from sim_benchmarks.reporting.vlabench import (
+    OFFICIAL_EXPECTED_EPISODES,
+    aggregate_official_vlabench,
+    compare_to_reported,
+    load_recording_databases,
+    validate_official_coverage,
+    validate_official_episode_identities,
 )
 
 
@@ -112,6 +130,10 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
         no_cot = build_vlabench_messages(images, "pick", cot=False)
         self.assertEqual(no_cot[-1]["content"][0]["text"], "<cot></cot>")
         self.assertTrue(no_cot[0]["content"][-1]["text"].endswith("pick /no_cot"))
+        self.assertEqual(
+            [part.get("text") for part in no_cot[0]["content"]].count("\n# Left-Wrist View\n"),
+            1,
+        )
 
         cot = build_vlabench_messages(images, "pick", cot=True)
         self.assertEqual(len(cot), 1)
@@ -165,6 +187,63 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
         np.testing.assert_allclose(result["state"][3:6], [0.0, 0.0, -np.pi], atol=1e-6)
         self.assertEqual(result["state"][6], 0.5)
 
+    def test_official_track_is_flattened_into_deterministic_episode_tasks(self) -> None:
+        track = {
+            "select_fruit": [{"seed": 1}, {"seed": 2}],
+            "select_toy": [{"seed": 3}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/track.json"
+            with open(path, "w", encoding="utf-8") as stream:
+                json.dump(track, stream)
+            tasks = load_vlabench_episode_tasks(
+                path,
+                suite="track_1_in_distribution",
+                selected_tasks=["select_fruit"],
+                episode_limit=1,
+            )
+        self.assertEqual(
+            {key: value for key, value in tasks[0].items() if key != "episode_config_sha256"},
+            {
+                "name": "select_fruit",
+                "suite": "track_1_in_distribution",
+                "episode_index": 0,
+                "episode_config": {"seed": 1},
+            },
+        )
+        self.assertRegex(tasks[0]["episode_config_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_episode_horizon_matches_official_default_and_task_override(self) -> None:
+        self.assertEqual(resolve_episode_max_steps({}), 200)
+        self.assertEqual(
+            resolve_episode_max_steps({"evaluation": {"max_episode_length": 300}}),
+            300,
+        )
+
+    def test_checkpoint_verifier_checks_size_and_digest(self) -> None:
+        payload = b"immutable checkpoint shard"
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/model.safetensors"
+            with open(path, "wb") as stream:
+                stream.write(payload)
+            checkpoint = {
+                "weight_files": [
+                    {
+                        "path": "model.safetensors",
+                        "size": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                ]
+            }
+            checks = verify_checkpoint_files(Path(directory), checkpoint)
+            self.assertTrue(checks[0]["size_ok"])
+            self.assertTrue(checks[0]["sha256_ok"])
+
+            checkpoint["weight_files"][0]["size"] += 1
+            with self.assertRaisesRegex(RuntimeError, "size mismatch"):
+                verify_checkpoint_files(Path(directory), checkpoint)
+
     def test_server_predict_builds_official_request_and_base_trims_chunk(self) -> None:
         decoded = np.zeros((1, 10, 60), dtype=np.float32)
         decoded[..., 6] = 0.3
@@ -185,6 +264,247 @@ class XiaomiRobotics1CodecTests(unittest.TestCase):
             XR1VLABenchProfile(action_dim=8)
         with self.assertRaisesRegex(ValueError, "execute_horizon"):
             XR1VLABenchProfile(execute_horizon=11)
+
+    def test_vlabench_report_uses_task_macro_not_episode_weighting(self) -> None:
+        tracks = (
+            "track_1_in_distribution",
+            "track_2_cross_category",
+            "track_3_common_sense",
+            "track_4_semantic_instruction",
+            "track_6_unseen_texture",
+        )
+        results = []
+        for index, track in enumerate(tracks):
+            results.append(
+                {
+                    "config": {"params": {"eval_track": track}},
+                    "tasks": [
+                        {
+                            "task": f"task_{index}_a",
+                            "mean_success": 1,
+                            "mean_intention_score": 0.5,
+                            "mean_progress_score": 0.25,
+                        },
+                        {
+                            "task": f"task_{index}_b",
+                            "mean_success": 0,
+                            "mean_intention_score": 0.25,
+                            "mean_progress_score": 0.75,
+                        },
+                    ],
+                }
+            )
+        report = aggregate_official_vlabench(results)
+        self.assertEqual(report["aggregation"], "macro_average_across_task_entries")
+        self.assertEqual(report["overall_aggregation"], "macro_average_across_all_task_entries")
+        self.assertEqual(report["overall"]["success"], 0.5)
+        self.assertEqual(report["overall"]["intention_score"], 0.375)
+        self.assertEqual(report["tracks"][tracks[0]]["macro"]["progress_score"], 0.5)
+
+    def test_vlabench_report_pools_shards_and_deduplicates_episodes(self) -> None:
+        results = []
+        for track in (
+            "track_1_in_distribution",
+            "track_2_cross_category",
+            "track_3_common_sense",
+            "track_4_semantic_instruction",
+            "track_6_unseen_texture",
+        ):
+            for episode_index, success in ((0, False), (1, True)):
+                results.append(
+                    {
+                        "config": {"params": {"eval_track": track}},
+                        "tasks": [
+                            {
+                                "task": "select_fruit",
+                                "episodes": [
+                                    {
+                                        "episode_index": episode_index,
+                                        "episode_config_sha256": str(episode_index) * 64,
+                                        "metrics": {
+                                            "success": success,
+                                            "intention_score": 0.5 + 0.5 * success,
+                                            "progress_score": 0.25 + 0.5 * success,
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                )
+        results.append(results[0])  # A resumed merge must not double-count an episode.
+
+        report = aggregate_official_vlabench(results)
+
+        self.assertEqual(report["num_episodes_total"], 10)
+        self.assertEqual(report["overall"]["success"], 0.5)
+        first_track = report["tracks"]["track_1_in_distribution"]
+        self.assertEqual(first_track["num_episodes"], 2)
+        self.assertEqual(first_track["tasks"]["select_fruit"]["intention_score"], 0.75)
+
+    def test_vlabench_report_compares_all_tracks_to_published_table(self) -> None:
+        report = {
+            "tracks": {
+                track: {"macro": {"success": 0.5, "intention_score": 0.6, "progress_score": 0.7}}
+                for track in (
+                    "track_1_in_distribution",
+                    "track_2_cross_category",
+                    "track_3_common_sense",
+                    "track_4_semantic_instruction",
+                    "track_6_unseen_texture",
+                )
+            },
+            "overall": {"success": 0.5, "intention_score": 0.6, "progress_score": 0.7},
+        }
+
+        comparison = compare_to_reported(report)
+
+        self.assertEqual(set(comparison["tracks"]), {*report["tracks"], "overall"})
+        self.assertAlmostEqual(
+            comparison["tracks"]["track_1_in_distribution"]["delta_percentage_points"]["success"],
+            -25.6,
+        )
+        self.assertAlmostEqual(
+            comparison["tracks"]["overall"]["delta_percentage_points"]["progress_score"],
+            -0.3,
+        )
+
+    def test_vlabench_coverage_gate_requires_every_pinned_episode(self) -> None:
+        tracks = {
+            track: {"tasks": {task: {"num_episodes": count} for task, count in expected.items()}}
+            for track, expected in OFFICIAL_EXPECTED_EPISODES.items()
+        }
+        expected_total = sum(sum(tasks.values()) for tasks in OFFICIAL_EXPECTED_EPISODES.values())
+        report = {"tracks": tracks, "num_episodes_total": expected_total}
+
+        coverage = validate_official_coverage(report)
+
+        self.assertEqual(coverage["status"], "complete")
+        self.assertEqual(coverage["observed_episodes"], 2460)
+
+        tracks["track_2_cross_category"]["tasks"]["insert_flower"]["num_episodes"] = 9
+        report["num_episodes_total"] -= 1
+        with self.assertRaisesRegex(ValueError, "track_2_cross_category/insert_flower"):
+            validate_official_coverage(report)
+
+    def test_vlabench_recording_loader_validates_episode_and_step_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "recording-test.sqlite"
+            connection = sqlite3.connect(database)
+            connection.executescript(
+                """
+                CREATE TABLE eval_metadata (
+                    eval_id TEXT PRIMARY KEY, safe_name TEXT NOT NULL, metadata TEXT NOT NULL
+                );
+                CREATE TABLE episode_results (
+                    sid TEXT NOT NULL, eid TEXT NOT NULL, eval_id TEXT NOT NULL,
+                    task_name TEXT, episode_id INTEGER, status TEXT, metrics TEXT,
+                    steps INTEGER, elapsed_sec REAL, context TEXT, jsonl_path TEXT,
+                    failure_reason TEXT, failure_detail TEXT,
+                    PRIMARY KEY (sid, eid)
+                );
+                CREATE TABLE step_rows (
+                    sid TEXT NOT NULL, eid TEXT NOT NULL, step_id INTEGER NOT NULL,
+                    fields TEXT NOT NULL, PRIMARY KEY (sid, eid, step_id)
+                );
+                """
+            )
+            metadata = {"config": {"params": {"eval_track": "track_1_in_distribution"}}}
+            context = {
+                "name": "select_fruit",
+                "suite": "track_1_in_distribution",
+                "episode_index": 7,
+                "episode_config_sha256": "a" * 64,
+            }
+            metrics = {"success": True, "intention_score": 0.75, "progress_score": 1.0}
+            connection.execute(
+                "INSERT INTO eval_metadata VALUES (?, ?, ?)",
+                ("eval", "safe", json.dumps(metadata)),
+            )
+            connection.execute(
+                "INSERT INTO episode_results VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "sid",
+                    "eid",
+                    "eval",
+                    "select_fruit",
+                    0,
+                    "success",
+                    json.dumps(metrics),
+                    2,
+                    3.5,
+                    json.dumps(context),
+                    None,
+                    None,
+                    None,
+                ),
+            )
+            connection.executemany(
+                "INSERT INTO step_rows VALUES (?, ?, ?, ?)",
+                [("sid", "eid", 0, "{}"), ("sid", "eid", 1, "{}")],
+            )
+            connection.commit()
+            connection.close()
+
+            results, validation = load_recording_databases([database])
+
+            self.assertEqual(validation[0]["sqlite_quick_check"], "ok")
+            self.assertEqual(validation[0]["episode_results"], 1)
+            self.assertEqual(validation[0]["step_rows"], 2)
+            episode = results[0]["tasks"][0]["episodes"][0]
+            self.assertEqual(episode["episode_index"], 7)
+            self.assertEqual(episode["metrics"]["intention_score"], 0.75)
+
+            connection = sqlite3.connect(database)
+            connection.execute("DELETE FROM step_rows WHERE step_id = 1")
+            connection.commit()
+            connection.close()
+            with self.assertRaisesRegex(ValueError, "contiguous step rows"):
+                load_recording_databases([database])
+
+    def test_vlabench_exact_identity_validation_uses_pinned_track_contents(self) -> None:
+        tracks = (
+            "track_1_in_distribution",
+            "track_2_cross_category",
+            "track_3_common_sense",
+            "track_4_semantic_instruction",
+            "track_6_unseen_texture",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            track_dir = Path(directory)
+            results = []
+            for index, track in enumerate(tracks):
+                episode_config = {"seed": index}
+                (track_dir / f"{track}.json").write_text(
+                    json.dumps({"select_fruit": [episode_config]}), encoding="utf-8"
+                )
+                digest = hashlib.sha256(
+                    json.dumps(episode_config, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+                results.append(
+                    {
+                        "config": {"params": {"eval_track": track}},
+                        "tasks": [
+                            {
+                                "task": "select_fruit",
+                                "episodes": [
+                                    {
+                                        "episode_index": 0,
+                                        "episode_config_sha256": digest,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                )
+
+            validation = validate_official_episode_identities(results, track_dir)
+
+            self.assertEqual(validation["status"], "exact_complete")
+            self.assertEqual(validation["observed_identities"], 5)
+            results.append(results[0])
+            with self.assertRaisesRegex(ValueError, "duplicate identities"):
+                validate_official_episode_identities(results, track_dir)
 
 
 if __name__ == "__main__":

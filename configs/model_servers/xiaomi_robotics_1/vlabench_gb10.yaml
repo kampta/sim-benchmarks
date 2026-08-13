@@ -1,0 +1,21 @@
+# DGX Spark / GB10 profile. flash-attn 2.8.3 is built locally for sm_120 with
+# CUDA 13; NVIDIA's forward-compatible kernel runs on this sm_121 GB10. This
+# preserves Xiaomi's released attention implementation.
+script: "src/sim_benchmarks/model_servers/xiaomi_robotics_1.py"
+port: 18000
+args:
+  model_path: "/data/shared1/models/Xiaomi-Robotics-1-VLABench"
+  revision: "2dfc33b390478f71737eacb4748333e6d8638a06"
+  robot_type: "vlabench_choice"
+  state_dim: 60
+  action_dim: 7
+  model_action_horizon: 10
+  chunk_size: 5
+  image_size: 480
+  cot: false
+  request_seed: 42
+  gripper_threshold: 0.2
+  position_offset: [0.0, -0.4, 0.78]
+  device: "cuda"
+  dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"

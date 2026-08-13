@@ -1,0 +1,100 @@
+# Native AMD64/ARM64 VLABench runtime for the XR-1 evaluation profile.
+# The upstream v0.4.0 image is AMD64-only and its Dockerfile uses floating bases.
+
+ARG CUDA_BASE=nvidia/cuda:13.0.1-base-ubuntu24.04@sha256:f8ef28f579ea42a44b415d2c5d46f788e6a9b395c6c83f2929416e1fc192c143
+FROM ${CUDA_BASE}
+
+ARG TARGETARCH
+ARG MINIFORGE_VERSION=26.3.2-0
+ARG MINIFORGE_AMD64_SHA256=1d9b75bdf29ba48d9f10bb155a685baab02d318d1d591d2495f97524579dccc1
+ARG MINIFORGE_ARM64_SHA256=b8f0320c0fe9bc9dd24be8896ecf4995bbba4227c9822902daeeb7f3689ba7d3
+ARG VLABENCH_REF=cf588fe60c0c7282174fe979f5913170cfe69017
+ARG RRT_ALGORITHMS_REF=e51d95ee489a225220d6ae2a764c4111f6ba7d85
+
+LABEL org.opencontainers.image.source="https://github.com/kampta/sim-benchmarks" \
+      org.opencontainers.image.revision.vlabench="${VLABENCH_REF}" \
+      org.opencontainers.image.revision.rrt_algorithms="${RRT_ALGORITHMS_REF}"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    VLABENCH_ROOT=/opt/VLABench/VLABench \
+    MUJOCO_GL=egl \
+    PYOPENGL_PLATFORM=egl \
+    EGL_PLATFORM=device \
+    MUJOCO_EGL_DEVICE_ID=0 \
+    NVIDIA_DRIVER_CAPABILITIES=all \
+    TOKENIZERS_PARALLELISM=false \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH=/opt/venv/bin:/opt/conda/bin:${PATH}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential ca-certificates cmake curl ffmpeg git pkg-config unzip wget \
+        libegl1 libegl1-mesa-dev libgl1 libgles2 libglew-dev libglfw3 \
+        libglib2.0-0 libglvnd-dev libhdf5-dev libosmesa6 libosmesa6-dev \
+        libsm6 libvulkan1 libxext6 libxkbcommon-x11-0 libxrender1 \
+        mesa-vulkan-drivers \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN case "${TARGETARCH}" in \
+        amd64) miniforge_arch=x86_64; miniforge_sha="${MINIFORGE_AMD64_SHA256}" ;; \
+        arm64) miniforge_arch=aarch64; miniforge_sha="${MINIFORGE_ARM64_SHA256}" ;; \
+        *) echo "Unsupported TARGETARCH=${TARGETARCH}" >&2; exit 2 ;; \
+    esac \
+    && installer=/tmp/miniforge.sh \
+    && curl -fsSL -o "${installer}" \
+        "https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-${miniforge_arch}.sh" \
+    && echo "${miniforge_sha}  ${installer}" | sha256sum --check --strict \
+    && bash "${installer}" -b -p /opt/conda \
+    && rm "${installer}" \
+    && mamba create -n vlabench -y python=3.10.20 pip=26.2.1 \
+    && conda clean -afy \
+    && /opt/conda/envs/vlabench/bin/python -m pip install --no-cache-dir uv==0.11.25 \
+    && /opt/conda/envs/vlabench/bin/uv venv \
+        --python /opt/conda/envs/vlabench/bin/python /opt/venv
+
+WORKDIR /workspace
+COPY pyproject.toml uv.lock README.md ./
+RUN /opt/conda/envs/vlabench/bin/uv sync --frozen --no-dev --no-install-project
+
+# Simulator dependencies match VLABench and Xiaomi's released evaluation path.
+RUN /opt/conda/envs/vlabench/bin/uv pip install --python /opt/venv/bin/python --no-cache \
+        mujoco==3.2.2 mujoco-mjx==3.2.2 dm_control==1.0.22 numpy==1.25.0 \
+        gym==0.26.2 gymnasium==0.29.1 scipy==1.14.0 h5py==3.11.0 \
+        mediapy==1.2.0 open3d==0.18.0 tensorflow-datasets==4.9.2 \
+        opencv-python==4.11.0.86 imageio gdown colorlog colorama ipdb Pillow \
+        scikit-learn openai
+
+RUN mkdir -p /opt/rrt-algorithms \
+    && git -C /opt/rrt-algorithms init -q \
+    && git -C /opt/rrt-algorithms remote add origin https://github.com/motion-planning/rrt-algorithms.git \
+    && git -C /opt/rrt-algorithms fetch -q --depth 1 origin "${RRT_ALGORITHMS_REF}" \
+    && git -C /opt/rrt-algorithms checkout -q FETCH_HEAD \
+    && /opt/conda/envs/vlabench/bin/uv pip install --python /opt/venv/bin/python --no-cache \
+        rtree==1.2.0 plotly==5.24.1 \
+    && /opt/conda/envs/vlabench/bin/uv pip install --python /opt/venv/bin/python --no-cache \
+        --editable /opt/rrt-algorithms --no-deps \
+    && rm -rf /opt/rrt-algorithms/.git
+
+RUN mkdir -p /opt/VLABench \
+    && git -C /opt/VLABench init -q \
+    && git -C /opt/VLABench remote add origin https://github.com/OpenMOSS/VLABench.git \
+    && git -C /opt/VLABench fetch -q --depth 1 origin "${VLABENCH_REF}" \
+    && git -C /opt/VLABench checkout -q FETCH_HEAD \
+    && /opt/conda/envs/vlabench/bin/uv pip install --python /opt/venv/bin/python --no-cache --editable /opt/VLABench --no-deps \
+    && rm -rf /opt/VLABench/.git
+
+COPY src/ src/
+RUN /opt/conda/envs/vlabench/bin/uv pip install --python /opt/venv/bin/python --no-cache /workspace --no-deps
+
+# The caller supplies the digest-verified, architecture-neutral asset tree as a
+# BuildKit named context. This avoids pulling the AMD64-only runtime image while
+# building natively on ARM64. Fail closed if either expected tree is missing.
+COPY --from=vlabench_assets /assets /opt/VLABench/VLABench/assets
+RUN test -d "${VLABENCH_ROOT}/assets/obj/meshes" \
+    && test -d "${VLABENCH_ROOT}/assets/scenes" \
+    && find "${VLABENCH_ROOT}/assets/obj/meshes" -type f -print -quit | grep -q . \
+    && find "${VLABENCH_ROOT}/assets/scenes" -type f -print -quit | grep -q .
+
+COPY configs/ configs/
+
+ENTRYPOINT ["/opt/venv/bin/vla-eval"]

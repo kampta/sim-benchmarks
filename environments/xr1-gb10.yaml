@@ -1,0 +1,21 @@
+name: xr1
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.20
+  - pip=25.1.1
+  - aria2=1.37.0
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu130
+      - --extra-index-url https://pypi.nvidia.com
+      - torch==2.9.1+cu130
+      - torchvision==0.24.1
+      - transformers==4.57.1
+      - huggingface-hub==0.36.2
+      - hf-xet==1.6.0
+      - numpy==1.26.4
+      - Pillow==12.3.0
+      - einops==0.8.2
+      - ninja==1.13.0
+      - vla-eval @ git+https://github.com/allenai/vla-evaluation-harness.git@2680ab2fafe981c2dba63c6c1a4e7bb4415dbb56
+      - -e .

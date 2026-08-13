@@ -1,0 +1,37 @@
+{
+  "id": "vlabench",
+  "name": "VLABench",
+  "source": "https://github.com/OpenMOSS/VLABench.git",
+  "revision": "cf588fe60c0c7282174fe979f5913170cfe69017",
+  "revision_date": "2025-11-11",
+  "status": "scaffolded",
+  "license": "MIT",
+  "runtime": {
+    "dockerfile": "docker/Dockerfile.vlabench",
+    "python": "3.10",
+    "mujoco": "3.2.2",
+    "mujoco_mjx": "3.2.2",
+    "dm_control": "1.0.22",
+    "open3d": "0.18.0",
+    "rrt_algorithms_revision": "e51d95ee489a225220d6ae2a764c4111f6ba7d85",
+    "rrt_algorithms_install": "editable",
+    "rtree": "1.2.0",
+    "plotly": "5.24.1"
+  },
+  "tracks": [
+    "track_1_in_distribution",
+    "track_2_cross_category",
+    "track_3_common_sense",
+    "track_4_semantic_instruction",
+    "track_6_unseen_texture"
+  ],
+  "asset_source": {
+    "objects_google_drive_id": "1ldEMZua2OzXHJTYTCP0IGVU1aFYBCMu-",
+    "scenes_google_drive_id": "1KdReRkibJClBHHD32jz_wTkaBzhEJ9Kw",
+    "mirror_image": "ghcr.io/allenai/vla-evaluation-harness/vlabench",
+    "mirror_image_digest": "sha256:8b7eb6bb8f7fd501c47646f0828b0c8b883afb1f5abfe849ed392aa5a053095a",
+    "asset_layer_digest": "sha256:9aaf46e753389b05e3b4fc3cdc62bc3ba3d577d5d1e1bbbfa0145d9361657b17",
+    "asset_layer_size": 5974243242
+  },
+  "notes": "Source matches the v0.4.0 harness pin and the default revision used by Xiaomi's released setup. The architecture-neutral upstream asset tree is copied from AllenAI's immutable released VLABench image so the native ARM64 image does not depend on a live Google Drive transfer."
+}
