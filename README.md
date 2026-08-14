@@ -284,6 +284,62 @@ wall time after 145 seconds of model startup. All ten SQLite databases pass
 Warm compiled throughput is 10/10 episodes in 39 seconds. Results are preserved
 under `/data/shared2/user/kampta/logs/sim_benchmarks/libero/pi05_reproduction`.
 
+The exact fast-path experiment moved the already-buffered ten-action chunk from
+the model server to the simulator client and used lossless raw image arrays on
+localhost. It did not skip physics, camera sampling, termination checks, or
+step recording. On the same warm model and first LIBERO-Object episode, the
+stock PNG/server-buffer path took 9.815 seconds of episode time (11.27 seconds
+process wall), while client chunking took 6.187 seconds (7.63 seconds wall):
+1.59x episode speedup and 1.48x wall speedup, with success in both runs. The
+ten-task gate remained 10/10 with zero errors and took 35 seconds. A shard
+sweep measured 39 seconds at four shards, 36 seconds at eight, and 35 seconds
+at ten; ten is the fastest tested GB10 topology, although inference supply is
+the limiting resource.
+
+A second, model-bridge optimization removes the checkpoint's declared
+`empty_camera_0` before inference. The LeRobot port otherwise runs SigLIP and
+carries 256 tokens through the prefix transformer even though that camera's
+padding mask is false. Compacting this masked block reduced the same successful
+128-step episode from 6.187 to 5.712 seconds and the ten-task gate from 35 to
+30 seconds while retaining 10/10 success. The fast launcher enables this path.
+It is distinct from suppressing intermediate simulator camera observations,
+which remains rejected. The launcher now also queries recorded episode statuses
+and fails unless both the smoke and throughput gates contain the expected
+number of successes; the upstream CLI can exit zero even when it records an
+episode error.
+
+The remaining single-episode profile is not model-only: environment creation
+and reset took 2.48 seconds, 128 MuJoCo control steps took 1.25 seconds, and
+waiting for 13 policy responses took 1.97 seconds. Raw MessagePack transport,
+image preprocessing, rendering calls, success checks, and SQLite persistence
+were each small after client-side chunking. Same-task resets measured about
+0.72 seconds versus about 1.4 seconds on a task switch, so task-dedicated
+persistent workers can help a full suite but are a low-single-digit wall-time
+optimization. Restricting simulator numerical libraries to one thread did not
+materially improve normalized throughput. TorchInductor `reduce-overhead`
+reduced cold compile plus first-episode time from 197 to 133 seconds, but warm
+latency was effectively unchanged. Fused SDPA likewise produced no warm gain
+and was removed.
+
+The more aggressive combined sparse-camera/B=10 experiment was rejected after
+two 7/10 gates; neither component is accepted without an independent accuracy
+gate. The static B=10 pi0.5 path required 309 seconds cold and 95 seconds warm,
+was slower than serialized B=1 inference on GB10, and triggered a PyTorch
+CUDA-graph thread-local failure when changed to B=1 in the live process. The
+production gate therefore keeps continuous camera sampling and pins
+`max_batch_size=1`. These measurements show that a 10-50x
+same-policy speedup is not available from evaluator plumbing on this host. The
+smaller pi0.5 iteration baseline is nevertheless about 99x faster per episode
+than the measured 611.8-second XR-1 GB10 average. This is an operational
+turnaround comparison, not a controlled model-throughput comparison: pi0.5 and
+XR-1 were measured against different simulators and episode horizons.
+
+Re-run the validated warmup plus ten-task gate with:
+
+```bash
+PI05_NUM_SHARDS=10 bash scripts/run_pi05_libero_fast_gate.sh
+```
+
 Active pi0.5/evaluator TODOs:
 
 - [x] Pin the LeRobot source, checkpoint files, normalization statistics, model
@@ -303,8 +359,25 @@ Active pi0.5/evaluator TODOs:
   Triton-bundled CUDA 12.8 assembler cannot target `sm_121a`.
 - [x] Reproduce AllenAI's 100/100 protocol (10 tasks x 10 episodes): 100/100,
   zero errors, 13,457 steps, and 349 seconds rollout wall time.
-- [ ] Select the fastest stable shard count from measured results on this GB10;
-  do not assume that more simulator containers are always faster.
+- [x] Add fail-closed client-side action-chunk negotiation and raw localhost
+  transport; preserve the upstream LIBERO simulator protocol and validate
+  10/10 episodes in 35 seconds.
+- [x] Remove π0.5's fully masked empty-camera token block; validate a 5.712-second
+  warm episode and a 10/10 gate in 30 seconds, and make recorded success counts
+  mandatory in the launcher.
+- [x] Select the fastest stable shard count from measured GB10 results: four,
+  eight, and ten shards took 39, 36, and 35 seconds for the same ten episodes;
+  keep ten for this gate and keep model batching disabled.
+- [x] Reject the combined sparse-camera/B=10 experiment after two 7/10 gates;
+  B=10 was also slower than B=1 on GB10. Retain neither optimization without
+  an independent accuracy gate.
+- [x] Reject fused SDPA and one-thread simulator pools as production speedups;
+  retain `reduce-overhead` only as an optional cold-start tradeoff because its
+  warm throughput was not better.
+- [ ] Validate masked-camera compaction over the existing 100-episode acceptance
+  protocol before treating it as the default for reported benchmark numbers.
+- [ ] Evaluate task-dedicated persistent simulator workers on the 500-episode
+  suite; require an end-to-end improvement before adding scheduling complexity.
 - [ ] Run the standard 500-episode LIBERO-Object suite with the validated
   ten-shard native runner and compare it with the published targets.
 - [ ] Turn the validated launcher/config/result layout into the template for
